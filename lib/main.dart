@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'fazer_forms.dart';
 
 void main() {
@@ -53,14 +54,32 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
   String colTenseLabel = "";
   String rowTenseLabel = "";
 
+  // Dropdown filter for verb display
+  String verbDisplayMode = "Guess!"; // "Guess!", "Only those simple forms which fit", "All simple forms"
+
   // The 70+ Simple Tense Forms of "Fazer"
   late final List<VerbForm> fazerForms;
+  
+  // Timer for flashing effect
+  Timer? flashTimer;
 
   @override
   void initState() {
     super.initState();
     _initializeData();
     _initializeControllers();
+  }
+
+  @override
+  void dispose() {
+    flashTimer?.cancel();
+    for (var c in colControllers.values) {
+      c.dispose();
+    }
+    for (var c in rowControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
   }
 
   void _initializeControllers() {
@@ -135,11 +154,23 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
           rowTenseLabel = matchedRow.label;
         });
 
-        // Flash Red simulation: 1) flash red, 2) then hold bold red
-        Future.delayed(const Duration(milliseconds: 400), () {
-          setState(() {
-            isFlashing = false;
-          });
+        // Cancel any existing timer
+        flashTimer?.cancel();
+        
+        // Flash Red simulation: toggle between redAccent and red for 2 seconds, then hold bold red
+        int flashCount = 0;
+        flashTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+          flashCount++;
+          if (flashCount <= 10) { // Flash 10 times (2 seconds total at 200ms intervals)
+            setState(() {
+              isFlashing = !isFlashing;
+            });
+          } else {
+            timer.cancel();
+            setState(() {
+              isFlashing = false;
+            });
+          }
         });
       }
     } else {
@@ -208,19 +239,29 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
                 children: [
                   Text("pickFrom: \"Fazer\"", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])),
                   const Divider(),
+                  DropdownButton<String>(
+                    value: verbDisplayMode,
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          verbDisplayMode = newValue;
+                        });
+                      }
+                    },
+                    items: <String>[
+                      "Guess!",
+                      "Only those simple forms which fit",
+                      "All simple forms"
+                    ].map<DropdownMenuItem<String>>((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value, style: const TextStyle(fontSize: 12)),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
                   Expanded(
-                    child: ListView.builder(
-                      itemCount: fazerForms.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2.0),
-                          child: Text(
-                            "${fazerForms[index].label}: ${fazerForms[index].form}",
-                            style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
-                          ),
-                        );
-                      },
-                    ),
+                    child: _buildVerbList(),
                   ),
                 ],
               ),
@@ -314,6 +355,48 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
           ),
         ],
       ),
+    );
+  }
+
+  List<VerbForm> _getFilteredForms() {
+    switch (verbDisplayMode) {
+      case "Guess!":
+        return [];
+      case "Only those simple forms which fit":
+        return fazerForms.where((form) {
+          int len = form.form.length;
+          return len == colLen || len == rowLen;
+        }).toList();
+      case "All simple forms":
+        return fazerForms;
+      default:
+        return [];
+    }
+  }
+
+  Widget _buildVerbList() {
+    List<VerbForm> formsToShow = _getFilteredForms();
+
+    if (formsToShow.isEmpty) {
+      return Center(
+        child: Text(
+          verbDisplayMode == "Guess!" ? "Make your guess!" : "No forms match.",
+          style: const TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: formsToShow.length,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
+          child: Text(
+            "${formsToShow[index].label}: ${formsToShow[index].form}",
+            style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+          ),
+        );
+      },
     );
   }
 
