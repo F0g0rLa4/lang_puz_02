@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'fazer_forms.dart';
 
@@ -48,6 +49,15 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
   // Row inputs (0-indexed internally)
   final Map<int, TextEditingController> rowControllers = {};
 
+  // Focus nodes for navigation
+  final Map<String, FocusNode> focusNodes = {}; // key format: "col_0", "row_0", "overlap"
+  
+  // Track which word ("row" or "col") the overlap cell was last entered from
+  String overlapEnteredFrom = "row"; // default to row
+  
+  // Track the current navigation mode based on last cell entry
+  String navigationMode = ""; // "row" or "col", empty until first entry
+
   // Validation States
   bool isValidated = false;
   bool isFlashing = false;
@@ -79,16 +89,22 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     for (var c in rowControllers.values) {
       c.dispose();
     }
+    for (var fn in focusNodes.values) {
+      fn.dispose();
+    }
     super.dispose();
   }
 
   void _initializeControllers() {
     for (int i = 0; i < colLen; i++) {
       colControllers[i] = TextEditingController();
+      focusNodes["col_$i"] = FocusNode();
     }
     for (int i = 0; i < rowLen; i++) {
       rowControllers[i] = TextEditingController();
+      focusNodes["row_$i"] = FocusNode();
     }
+    focusNodes["overlap"] = FocusNode();
 
     // Link the overlapping cell controllers so typing in one updates the other
     colControllers[ovrCol - 1]!.addListener(() {
@@ -337,7 +353,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
                       Positioned(
                         left: i * cellSize,
                         top: (ovrCol - 1) * cellSize, // Row sits at the vertical intersection line
-                        child: _buildCell(rowControllers[i]!, letterColor, letterWeight, cellSize),
+                        child: _buildCell(rowControllers[i]!, letterColor, letterWeight, cellSize, focusNodes["row_$i"]!, "row_$i", true, i),
                       ),
                     // Render Column Units
                     for (int i = 0; i < colLen; i++)
@@ -346,7 +362,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
                         Positioned(
                           left: (ovrRow - 1) * cellSize, // Column sits at horizontal intersection line
                           top: i * cellSize,
-                          child: _buildCell(colControllers[i]!, letterColor, letterWeight, cellSize),
+                          child: _buildCell(colControllers[i]!, letterColor, letterWeight, cellSize, focusNodes["col_$i"]!, "col_$i", false, i),
                         ),
                   ],
                 ),
@@ -400,7 +416,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     );
   }
 
-  Widget _buildCell(TextEditingController controller, Color color, FontWeight weight, double size) {
+  Widget _buildCell(TextEditingController controller, Color color, FontWeight weight, double size, FocusNode focusNode, String cellKey, bool isRowCell, int cellIndex) {
     return Container(
       width: size,
       height: size,
@@ -408,19 +424,154 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
         border: Border.all(color: Colors.black87),
         color: Colors.white,
       ),
-      child: TextField(
-        controller: controller,
-        maxLength: 1,
-        textAlign: TextAlign.center,
-        textCapitalization: TextCapitalization.characters,
-        style: TextStyle(color: color, fontWeight: weight, fontSize: 20),
-        decoration: const InputDecoration(
-          counterText: "",
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.only(bottom: 4)
+      child: Focus(
+        onKey: (node, event) {
+          if (event.isKeyPressed(LogicalKeyboardKey.tab)) {
+            if (event.isShiftPressed) {
+              _tabBackward(cellKey, isRowCell, cellIndex);
+              return KeyEventResult.handled;
+            } else {
+              _tabForward(cellKey, isRowCell, cellIndex);
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          maxLength: 1,
+          textAlign: TextAlign.center,
+          textCapitalization: TextCapitalization.characters,
+          style: TextStyle(color: color, fontWeight: weight, fontSize: 20),
+          decoration: const InputDecoration(
+            counterText: "",
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.only(bottom: 4)
+          ),
+          onChanged: (value) {
+            if (value.isNotEmpty) {
+              _handleCellInput(cellKey, isRowCell, cellIndex);
+            }
+          },
         ),
       ),
     );
+  }
+
+  void _tabForward(String cellKey, bool isRowCell, int cellIndex) {
+    // Determine which mode to use for navigation
+    String mode = navigationMode;
+    if (mode.isEmpty) {
+      mode = isRowCell ? "row" : "col";
+    }
+    
+    String nextKey = "";
+    
+    if (mode == "row") {
+      // Navigate within row (horizontally)
+      final maxIndex = rowLen - 1;
+      if (cellIndex < maxIndex) {
+        nextKey = "row_${cellIndex + 1}";
+      }
+    } else {
+      // Navigate within column (vertically), skipping the overlap cell
+      final maxIndex = colLen - 1;
+      if (cellIndex < maxIndex) {
+        int nextIndex = cellIndex + 1;
+        // Skip the overlap cell (ovrCol - 1)
+        if (nextIndex == ovrCol - 1) {
+          nextIndex++;
+        }
+        if (nextIndex <= maxIndex) {
+          nextKey = "col_$nextIndex";
+        }
+      }
+    }
+    
+    if (nextKey.isNotEmpty && focusNodes.containsKey(nextKey)) {
+      focusNodes[nextKey]?.requestFocus();
+    }
+  }
+
+  void _tabBackward(String cellKey, bool isRowCell, int cellIndex) {
+    // Determine which mode to use for navigation
+    String mode = navigationMode;
+    if (mode.isEmpty) {
+      mode = isRowCell ? "row" : "col";
+    }
+    
+    String prevKey = "";
+    
+    if (mode == "row") {
+      // Navigate within row (horizontally)
+      if (cellIndex > 0) {
+        prevKey = "row_${cellIndex - 1}";
+      }
+    } else {
+      // Navigate within column (vertically), skipping the overlap cell
+      if (cellIndex > 0) {
+        int prevIndex = cellIndex - 1;
+        // Skip the overlap cell (ovrCol - 1)
+        if (prevIndex == ovrCol - 1) {
+          prevIndex--;
+        }
+        if (prevIndex >= 0) {
+          prevKey = "col_$prevIndex";
+        }
+      }
+    }
+    
+    if (prevKey.isNotEmpty && focusNodes.containsKey(prevKey)) {
+      focusNodes[prevKey]?.requestFocus();
+    }
+  }
+
+  void _handleCellInput(String cellKey, bool isRowCell, int cellIndex) {
+    // Determine if this is the overlap cell
+    bool isOverlapCell = isRowCell ? (cellIndex == ovrRow - 1) : (cellIndex == ovrCol - 1);
+    
+    // Set navigation mode based on entry
+    if (!isOverlapCell) {
+      // Entering a non-overlap cell, set mode
+      navigationMode = isRowCell ? "row" : "col";
+    } else if (navigationMode.isEmpty) {
+      // Entering overlap as first cell, don't set mode yet - wait for next entry
+      return;
+    }
+    
+    // Determine which mode to use
+    String mode = navigationMode.isEmpty ? (isRowCell ? "row" : "col") : navigationMode;
+    
+    // Determine next cell based on mode
+    String nextKey = "";
+    
+    if (mode == "row") {
+      // Navigate horizontally within row
+      final maxIndex = rowLen - 1;
+      if (cellIndex < maxIndex) {
+        nextKey = "row_${cellIndex + 1}";
+      }
+    } else {
+      // Navigate vertically within column, skipping the overlap cell
+      final maxIndex = colLen - 1;
+      if (cellIndex < maxIndex) {
+        int nextIndex = cellIndex + 1;
+        // Skip the overlap cell (ovrCol - 1)
+        if (nextIndex == ovrCol - 1) {
+          nextIndex++;
+        }
+        if (nextIndex <= maxIndex) {
+          nextKey = "col_$nextIndex";
+        }
+      }
+    }
+    
+    if (nextKey.isNotEmpty && focusNodes.containsKey(nextKey)) {
+      Future.delayed(const Duration(milliseconds: 50), () {
+        focusNodes[nextKey]?.requestFocus();
+      });
+    }
   }
 
   void _initializeData() {
