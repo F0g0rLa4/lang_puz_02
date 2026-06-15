@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:async';
+import 'package:flutter/services.dart'; // for Keyboard Events
+import 'dart:async';  // for Timer
 import 'fazer_forms.dart';
 
 void main() {
@@ -59,7 +59,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
 
   // Validation States
   bool isValidated = false;
-  bool isFlashing = false;
+  bool showRedLetters = false;
   String colTenseLabel = "";
   String rowTenseLabel = "";
 
@@ -226,21 +226,27 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
       if (!isValidated) {
         setState(() {
           isValidated = true;
-          isFlashing = true;
+          showRedLetters = true;
           colTenseLabel = matchedCol.label;
           rowTenseLabel = matchedRow.label;
         });
 
         // Use your preserved Timer effect
-        flashTimer?.cancel();
+flashTimer?.cancel();
+
         int flashCount = 0;
         flashTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
           flashCount++;
-          if (flashCount <= 10) { 
-            setState(() { isFlashing = !isFlashing; });
+
+          if (flashCount < 10) {
+            setState(() {
+              showRedLetters = !showRedLetters;
+            });
           } else {
             timer.cancel();
-            setState(() { isFlashing = false; });
+            setState(() {
+              showRedLetters = true; // hold red after flashing
+            });
           }
         });
       }
@@ -253,7 +259,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     if (isValidated) {
       setState(() {
         isValidated = false;
-        isFlashing = false;
+        showRedLetters = false;
         colTenseLabel = "";
         rowTenseLabel = "";
       });
@@ -266,7 +272,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     FontWeight letterWeight = FontWeight.normal;
 
     if (isValidated) {
-      letterColor = isFlashing ? Colors.redAccent : Colors.red;
+      letterColor = showRedLetters ? Colors.redAccent : Colors.blue;
       letterWeight = FontWeight.bold;
     }
 
