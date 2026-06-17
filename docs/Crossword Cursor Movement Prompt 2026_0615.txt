@@ -1,0 +1,40 @@
+Crossword Cursor Movement 2026_0515 v0.0.5
+when letter entered in cell automatically tab right or down. If overlap cell choose right or down based on where the previous letter was entered (if entered in col, then down; if entered in row then left).  Don't tab if in last cell of row or col as appropriate.
+
+Last prompt to claude in vsc
+Col not improved - no auto move on entry of a letter to next cell, no tabbing. And immediately entering a letter in overlap immediately initializes row tabbing. Must wait to determine row or col mode until a non-overlap cell is selected.
+
+It there a keyboard handling package for Flutter that covers movement between cells in grids, like a crossword puzzle where columns and rows overlap.  Should automatically move to next cell after a letter entered, understanding to move up/down for columns and right/left for rows and handle overlap cells in some consistent way. 
+
+Update your code to conform to the following. Add extensive comments for me bcs I am new to this. 
+My guess (but you decide) is that at least you will need change TypeDirection;  add FocusNode for overlap; adjust _onCellChanged to determine which navigation caused the change (see movement types below). 
+
+All cells should be either 1) col cell, 2) row cell or 3) overlap cell (a cell that is a member of both a row and a 
+col).
+
+There should be 3 types of movement to a cell. 
+1) By clicking in it. 
+2) By entering a letter in the current cell and reaching this cell by automatic type movement.  
+3) Or by tabbing in the direction of the TypeDirection or shift-tab in the opposing direction of Type direction.  
+No cell should be selected a the beginning.  (Add a prompt "Click a cell to start")
+
+
+There should be 3 positive navigation TypeDirection modes: 1) neutral, 2) across for row, and 3) down for col. Shift-tab while in across or col should cause negative (reverse) navigation. 
+Whenever arrive in cell check the following: 
+-If arrived by click in the overlap cell set to neutral (typing or tabbing does not move). 
+-Otherwise if click in set across if in a row, down if in a col
+-If auto to or tab or shift+tab to a cell to then set to col or row depending on previous cell.  
+- If arrive in an overlap NOT by clicking keep mode setting of across or down. 
+-Do not skip over the overlap cell when in across or down mode just because it is special. 
+- Do not do NYT Crossword logic - which I understand to mean a second click in a cell reverses direction of movement, I don't want that. 
+- I don't want backspace or arrow keys (only tab, shift-tab & click)
+
+#Your revision of your original crossword code with the new cursor movement code works!  Please do something different: add your cursor movement code (with any appropriate modifications) to my slightly modified version of your original complete code, that does not your cursor movement improvements.  
+
+#My modified version of your original code does these things.
+-Uses black87 instead of black80
+-Separates the original actual full verb form list into a separate file which is not included but reference as import 'fazer_forms.dart' - it is working fine. 
+-List of the verb forms originally shown by default to options on a dropdown for Guess (show nothing), All forms (show all forms), show forms that fit (only show forms that fit in either the row or column). 
+-Attempts to fix the crossword cursor movement and fails miserably. 
+
+Replace the failing cursor movement code in my modified version with your successful code and change as little of everything else as possible unless now irrelevant - like maybe import 'dart:async'. 

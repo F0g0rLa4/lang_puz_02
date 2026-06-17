@@ -1,0 +1,11 @@
+Below is the test protocol and the related source file. The source file also calls a verb_forms file which is not included. What does the existing test do?  If it does anything how do I evoke it?
+
+Revise the test, 
+for the crossword, I want the test to 
+1) click on the dropdown and select each of the 3 options and do this sequence 2 time, pausing between each selection for 4 seconds so i can see the result.  
+2) Pausing 2 seconds between each action, 
+	2a) click in cell 1 of the row of the crossword (if the first leftward cell is 0), shift-tab 1 time, then tab equal to column length-1 (the last cell to the right). The shift-tab 4 times. 
+	2b) Then click in the overlap cell, shift-tab one time then tab 3 times. 
+	2c) Click in last (bottom) cell of the column and tab 2 times, then shift tab 3 times. 
+	2d) repeat 2a
+	2e) pausing 1 second in each cell, fill the row with "fazia" and the column with "faz", wait 4 seconds, then change the first cell in the row from f to x. 
