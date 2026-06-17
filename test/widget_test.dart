@@ -147,7 +147,12 @@ void main() {
     await tester.pumpAndSettle();
     
     // The words are now complete, which should trigger the validation and flashing effect in the app!
-    await realTimePause(4); // Wait 4 seconds as requested
+    // However flash timing occurs invisibly in background. 
+    // Unless Actively pump frames to watch the red flashing animation!
+    // 20 pumps at 200ms each = 4 seconds of visible animation.
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
     // Change the first cell in the row from 'f' to 'x'
     await tester.enterText(find.byType(TextField).at(0), 'x');

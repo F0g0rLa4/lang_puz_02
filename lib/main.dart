@@ -154,6 +154,11 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
         int nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
         if (rowNodes.containsKey(nextIndex)) {
           rowNodes[nextIndex]!.requestFocus();
+        } else {
+          // Hit the wall! Explicitly hold focus to prevent Web glitches.
+          // Needed on Chrome, but also adds protection on all platforms
+          rowNodes[currentIndex]!.requestFocus();
+
         }
       }
     } else if (currentDirection == TypeDirection.down) {
@@ -168,6 +173,10 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
         int nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
         if (colNodes.containsKey(nextIndex)) {
           colNodes[nextIndex]!.requestFocus();
+        } else {
+          // Hit the wall! Explicitly hold focus to prevent Web glitches.
+          // Needed on Chrome, but also adds protection on all platforms
+          colNodes[currentIndex]!.requestFocus();
         }
       }
     }
