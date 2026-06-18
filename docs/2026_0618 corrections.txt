@@ -1,10 +1,29 @@
-2026_0616 corrections
+2026_0618 corrections
 
-#1 Run tests - Simple test in Chrome using Integrated test works. 
+#1 Set up SQLite database - Integrate the data update into the main app?
+flutter pub add sqflite path
+flutter pub add sqflite_common_ffi  (only needed if running as windows?)
+.dart_tool \ sqflite_common_ffi \ databases \ verball_full_test.db
 
-#2 Set up SQLite database - how configure an agent to do this. Not done.
+Now how copy the SQLite database to the app directory? 
+Just copy ..\.dart_tool\sqflite_common_ffi ?
+Here is the existing main.dart for the app change it so we are querying the 
+  db for the drop downs and solution state of the crossword. 
 
-#4 More complex crossword 2 rows, e.g., 3 short columns?
+Now refactor the original 
+
+#2 MISC flutter pub add sqflite path etc in main and in both 
+   Fix spell checker - can't recognize Portuguese
+flutter pub outdated
+  matcher 0.12.19 (0.12.20 available)
+  meta 1.18.0 (1.18.3 available)
+  test_api 0.7.11 (0.7.12 available)
+  vector_math 2.2.0 (2.4.0 available)
+
+#3  More complex crossword 
+	2 rows, e.g., 3 short columns?
+	prompt on fazia in row and cross columns on all 5 letters?
+   
 
 #3 I need to build up the crossword cells to have visual interest (dimensionality). Include 
 A) a shaded background showing under the entry space that does not conflict with the flashing entry prompt or the visibility of the letters entered on top of it (unless of course the colors are incorrectly chosen). The cell background should have some color, texture and shadow from point source light beyond the upper left of app screen area. 

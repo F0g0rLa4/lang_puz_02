@@ -1,0 +1,61 @@
+2026_0617 
+# Preliminary database and app integration
+
+Under the heading below of # Discussion etc I have outlined the eventual scope of the database. Review that in case there is something there that we need to include in the simpler preliminary database described in Step 1) below.  Read it all, but just do Step 1).
+
+Step 1) I initially want to 
+
+a) create a very basic SQLite database of simple non-compound Portuguese tenses and their syntactical identifiers (mood, tense, person) and populate it for fazer. I going  to use it to replace the map variable of fazer in a separate file in my flutter app. 
+
+b) Can you create a separate Flutter app to run SQLite and the required SQL to create this database? Do you need anything else to do 1)a and 1)b?  I would prefer to do this just to understand and verify the basics of how to integrate SQLite into my Flutter app. 
+
+c) After we do this, I will give you the existing app to modify to use the database instead of the map variable file. This will include the Database helper singleton class, CRUD functions and anything else needed at this stage.  And in this step we also include your example function getWordsByLength(int length) for example. And add attributes for the words, like length. 
+
+Step 2) We will expand the database to include about 20-30 verbs and enhance the App to take advantage of that. 
+
+Step 3) Expand the database in to support the broader design below
+
+
+# Discussion of features related to design of the app's Database for App Name Verball
+
+## App Goals for users in declining order
+
+1) Learn Verb form memorization in languages with multiplicity of simple verb forms, e.g. Portuguese not English. 
+2) Learn Syntax for proper use of forms
+3) Additional Vocabulary solely to mix up examples in support of 1 and 2 - not a dictionary
+
+## Data for each language to support learning and puzzle/game approach
+
+1) For each learning language supported (Brazilian Portuguese initially)
+Learning language vs translation language (learners native/reference language)
+one learning language with match to a translation language pair (one way, bidirectional for what purpose), but expandable - maybe one at a time - Port to Eng or French to Spanish
+
+2) Cross references/categories (verb irregularity, commonly used/frequency:, other forms for comparison/confusion (da/dais, vais/ides), verbs that should be learned in sets (dizer/fazer/trazer, ver & vir, Pôr & Poder, etc.)
+
+3) Puzzle related attribute data like the length of the word, maybe a collection of positional information like where in fazia are the unique f,z,i the a's and thus when comparing to another word, where the crossword overlap would be. Perhaps enabling a search of what word pairs of correct length match at this overlapping position. 
+
+
+## Analytics
+  -Ability to report on encounters with items with characteristics including cross ref/categories above 
+  -User encounters (number times seen, last time seen, success/partial success, etc)
+  -Eventual FSRS or maybe simpler rankings. 
+
+##Graphic presentation progress analysis, 
+	e.g., Progress with core irregular verbs
+
+## Initial Data to construct
+
+--1 default user, but 2 additional users which we will populate with static user data to allow testing of analytics 
+--100 verbs 
+	=Maintain verb forms, syntatic names of the forms and abbreviated syntactic names, in both leaning language and translation pair. 
+	=Initially only simple forms
+	=Don't need to store 7 tensos compostos. We have all tenses of ter/haver and when a verb is selected we will have its past participle. 
+
+## Design Comments
+
+In this app's design in general. Take advantage of 
+1) available collections of language digestible by AI to create lists of forms etc. 
+2) linking dynamically to 
+	a) existing open sources (e.g., for additional definitions or weird form variants)
+	b) and eventually (not at first) of AI composition of text, sound and images. 
+

@@ -1,0 +1,46 @@
+# List of Verb Parts
+
+## Simple Tenses
+
+Indicativo
+
+Presente do indicativo — present indicative
+Pretérito imperfeito do indicativo — imperfect indicative
+Pretérito perfeito simples do indicativo — preterite / simple past
+Pretérito mais-que-perfeito simples do indicativo — simple pluperfect / simple past perfect
+Futuro do presente do indicativo — future indicative
+Futuro do pretérito do indicativo — conditional / future-in-the-past
+
+Subjuntivo
+
+Presente do subjuntivo — present subjunctive
+Pretérito imperfeito do subjuntivo — imperfect subjunctive
+Futuro do subjuntivo — future subjunctive
+
+Imperativo
+
+Imperativo afirmativo — affirmative imperative
+Imperativo negativo — negative imperative
+
+Formas nominais
+
+Infinitivo impessoal — impersonal infinitive
+Infinitivo pessoal — personal infinitive
+Gerúndio — gerund
+Particípio passado — past participle
+
+
+## Compound Tenses
+Indicative
+pretérito perfeito composto
+pretérito mais-que-perfeito composto
+futuro do presente composto
+futuro do pretérito composto
+
+Subjunctive
+pretérito perfeito composto
+pretérito mais-que-perfeito composto
+futuro composto
+
+
+## DETAIL -  See excel spreadsheet

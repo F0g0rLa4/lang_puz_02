@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // for Keyboard Events
+import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
-import 'fazer_forms.dart';
+import 'dart:io';     // for File
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize desktop SQLite FFI for Windows development
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
   runApp(const CrosswordApp());
 }
 
@@ -27,11 +36,57 @@ class VerbForm {
   const VerbForm(this.form, this.label);
 }
 
-// 1. Explicit cell types for navigation rules
 enum CellType { colCell, rowCell, overlapCell }
-
-// 2. Navigation modes
 enum TypeDirection { neutral, across, down }
+
+// --- DATABASE HELPER ---
+class DatabaseHelper {
+  static final DatabaseHelper instance = DatabaseHelper._init();
+  static Database? _database;
+
+  DatabaseHelper._init();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('verball.db');
+    return _database!;
+  }
+
+  Future<Database> _initDB(String fileName) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, fileName);
+
+    // Check if DB already exists on the device
+    final exists = await databaseExists(path);
+
+    if (!exists) {
+      // If it doesn't exist, extract it from the assets folder
+      try {
+        await Directory(dirname(path)).create(recursive: true);
+      } catch (_) {}
+      
+      ByteData data = await rootBundle.load("assets/$fileName");
+      List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      
+      await File(path).writeAsBytes(bytes, flush: true);
+    }
+    
+    return await openDatabase(path);
+  }
+
+  Future<List<VerbForm>> getAllFazerForms() async {
+    final db = await instance.database;
+    // Querying the DB where verb_id = 1 (assuming Fazer is verb 1 from our seed)
+    final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
+    
+    return List.generate(maps.length, (i) {
+      return VerbForm(
+        maps[i]['form_text'] as String,
+        maps[i]['label_short'] as String,
+      );
+    });
+  }
+}
 
 // --- WIDGET DEFINITIONS ---
 class CrosswordHomepage extends StatefulWidget {
@@ -42,68 +97,65 @@ class CrosswordHomepage extends StatefulWidget {
 }
 
 class _CrosswordHomepageState extends State<CrosswordHomepage> {
-  // Puzzle Definition: (colLen, rowLen, ovr=(colIdx1Based, rowIdx1Based))
   final int colLen = 3;
   final int rowLen = 5;
   final int ovrCol = 2; 
   final int ovrRow = 5; 
 
-  // Maps to hold our Controllers and FocusNodes (0-indexed internally).
   final Map<int, TextEditingController> colControllers = {};
   final Map<int, TextEditingController> rowControllers = {};
   final Map<int, FocusNode> colNodes = {};
   final Map<int, FocusNode> rowNodes = {};
 
-  // Track the current navigation mode
   TypeDirection currentDirection = TypeDirection.neutral;
 
-  // Validation States
   bool isValidated = false;
   bool showRedLetters = false;
   String colTenseLabel = "";
   String rowTenseLabel = "";
-
-  // Dropdown filter for verb display
   String verbDisplayMode = "Guess!"; 
-
-  late final List<VerbForm> fazerForms;
   
-  // Timer for flashing effect
   Timer? flashTimer;
+
+  // DB Data Variables
+  List<VerbForm> fazerForms = [];
+  bool isLoading = true; // Track loading state
 
   @override
   void initState() {
     super.initState();
-    _initializeData();
-    _initializeGrid(); // Replacing your old _initializeControllers
+    _initializeGrid();
+    _loadDataFromDatabase(); 
+  }
+
+  // --- ASYNC DATA LOADING ---
+  Future<void> _loadDataFromDatabase() async {
+    final forms = await DatabaseHelper.instance.getAllFazerForms();
+    setState(() {
+      fazerForms = forms;
+      isLoading = false; // Hide the loading spinner once data is fetched
+    });
   }
 
   @override
   void dispose() {
     flashTimer?.cancel();
-    
-    // Dispose all unique nodes and controllers to prevent memory leaks
     final allNodes = {...colNodes.values, ...rowNodes.values};
     for (var node in allNodes) { node.dispose(); }
 
     final allControllers = {...colControllers.values, ...rowControllers.values};
     for (var controller in allControllers) { controller.dispose(); }
-    
     super.dispose();
   }
-
-  // --- NEW CURSOR LOGIC BLOCK ---
 
   void _initializeGrid() {
     int overlapColIndex = ovrCol - 1;
     int overlapRowIndex = ovrRow - 1;
 
-    // Create the unified overlap objects (Both Row and Col maps will point to this exact object)
     TextEditingController overlapController = TextEditingController();
     FocusNode overlapNode = _createCustomFocusNode();
     overlapController.addListener(_validatePuzzle);
 
-    // Build Row Cells
     for (int i = 0; i < rowLen; i++) {
       if (i == overlapRowIndex) {
         rowControllers[i] = overlapController;
@@ -114,7 +166,6 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
       }
     }
 
-    // Build Column Cells
     for (int i = 0; i < colLen; i++) {
       if (i == overlapColIndex) {
         colControllers[i] = overlapController;
@@ -155,10 +206,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
         if (rowNodes.containsKey(nextIndex)) {
           rowNodes[nextIndex]!.requestFocus();
         } else {
-          // Hit the wall! Explicitly hold focus to prevent Web glitches.
-          // Needed on Chrome, but also adds protection on all platforms
           rowNodes[currentIndex]!.requestFocus();
-
         }
       }
     } else if (currentDirection == TypeDirection.down) {
@@ -174,8 +222,6 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
         if (colNodes.containsKey(nextIndex)) {
           colNodes[nextIndex]!.requestFocus();
         } else {
-          // Hit the wall! Explicitly hold focus to prevent Web glitches.
-          // Needed on Chrome, but also adds protection on all platforms
           colNodes[currentIndex]!.requestFocus();
         }
       }
@@ -200,10 +246,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     }
   }
 
-  // --- END CURSOR LOGIC BLOCK ---
-
   void _validatePuzzle() {
-    // Because the overlap cell is unified, we simply read the maps sequentially
     String currentColWord = "";
     for (int i = 0; i < colLen; i++) {
       currentColWord += colControllers[i]!.text.toLowerCase();
@@ -214,13 +257,11 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
       currentRowWord += rowControllers[i]!.text.toLowerCase();
     }
 
-    // Check if lengths match completely
     if (currentColWord.length != colLen || currentRowWord.length != rowLen) {
       _setInvalid();
       return;
     }
 
-    // Search for matches in dictionary
     VerbForm? matchedCol = fazerForms.firstWhere(
       (element) => element.form.toLowerCase() == currentColWord,
       orElse: () => const VerbForm("", ""),
@@ -240,22 +281,15 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
           rowTenseLabel = matchedRow.label;
         });
 
-        // Use your preserved Timer effect
-flashTimer?.cancel();
-
+        flashTimer?.cancel();
         int flashCount = 0;
         flashTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
           flashCount++;
-
           if (flashCount < 10) {
-            setState(() {
-              showRedLetters = !showRedLetters;
-            });
+            setState(() { showRedLetters = !showRedLetters; });
           } else {
             timer.cancel();
-            setState(() {
-              showRedLetters = true; // hold red after flashing
-            });
+            setState(() { showRedLetters = true; });
           }
         });
       }
@@ -277,6 +311,22 @@ flashTimer?.cancel();
 
   @override
   Widget build(BuildContext context) {
+    // Show a loading spinner if the database is still being read
+    if (isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Loading Dictionary...", style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
     Color letterColor = Colors.blue;
     FontWeight letterWeight = FontWeight.normal;
 
@@ -285,7 +335,6 @@ flashTimer?.cancel();
       letterWeight = FontWeight.bold;
     }
 
-    // Added the dynamic prompt so the user knows the navigation state
     String promptText = "Click a cell to start";
     if (currentDirection == TypeDirection.across) promptText = "Mode: Across (Row)";
     if (currentDirection == TypeDirection.down) promptText = "Mode: Down (Column)";
@@ -295,7 +344,6 @@ flashTimer?.cancel();
       appBar: AppBar(title: const String.fromEnvironment("title") == "" ? const Text("Verb Crossword Mockup") : null),
       body: Row(
         children: [
-          // Left Side: Crossword Graphic Board
           Expanded(
             flex: 3,
             child: SingleChildScrollView(
@@ -315,10 +363,7 @@ flashTimer?.cancel();
               ),
             ),
           ),
-          
           const VerticalDivider(width: 1),
-
-          // Right Side: Preserved Dropdown UI
           Expanded(
             flex: 2,
             child: Container(
@@ -393,7 +438,6 @@ flashTimer?.cancel();
                 height: cellSize * colLen,
                 child: Stack(
                   children: [
-                    // Render Row Units
                     for (int i = 0; i < rowLen; i++)
                       Positioned(
                         left: i * cellSize,
@@ -407,7 +451,6 @@ flashTimer?.cancel();
                           type: i == overlapRowIndex ? CellType.overlapCell : CellType.rowCell
                         ),
                       ),
-                    // Render Column Units (Skipping overlap to prevent doubling UI)
                     for (int i = 0; i < colLen; i++)
                       if (i != overlapColIndex)
                         Positioned(
@@ -432,7 +475,6 @@ flashTimer?.cancel();
     );
   }
 
-  // Your preserved _getFilteredForms / _buildVerbList
   List<VerbForm> _getFilteredForms() {
     switch (verbDisplayMode) {
       case "Guess!":
@@ -475,7 +517,6 @@ flashTimer?.cancel();
     );
   }
 
-  // Notice: The custom Focus wrapper is gone, logic handled seamlessly via custom FocusNode!
   Widget _buildCell({
     required TextEditingController controller, 
     required Color color, 
@@ -488,7 +529,7 @@ flashTimer?.cancel();
       width: size,
       height: size,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black87), // Preserved your black87 request
+        border: Border.all(color: Colors.black87),
         color: Colors.white,
       ),
       child: TextField(
@@ -507,10 +548,5 @@ flashTimer?.cancel();
         onChanged: _onCellTextChanged,
       ),
     );
-  }
-
-  void _initializeData() {
-    // Linked to your separate fazer_forms.dart import
-    fazerForms = fazerFormsList;
   }
 }
