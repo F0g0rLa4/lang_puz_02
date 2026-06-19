@@ -2,16 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:path/path.dart';  // handles different path formats among platforms
+// import 'package:sqflite/sqflite.dart'; redundant
+import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
 
 void main() async {
+  //Wakes up Native Engine before runApp wakes the UI asking for data, 
+  //so the correct desktop bridge is already in place.
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize desktop SQLite FFI for Windows development
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+    // Initialize desktop SQLite FFI for Windows development
+  sqfliteFfiInit();  // Initialize
+  databaseFactory = databaseFactoryFfi; // Set factory to FFI instead of default mobile
 
   runApp(const CrosswordApp());
 }
@@ -36,56 +37,52 @@ class VerbForm {
   const VerbForm(this.form, this.label);
 }
 
-enum CellType { colCell, rowCell, overlapCell }
+enum CellType { colCell, rowCell, overlapCell } // Strict lists
 enum TypeDirection { neutral, across, down }
 
 // --- DATABASE HELPER ---
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
-  static Database? _database;
+  static Database? _database;   // Empty at start, no db opened yet
 
   DatabaseHelper._init();
 
-  Future<Database> get database async {
+Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('verball.db');
-    return _database!;
-  }
 
-  Future<Database> _initDB(String fileName) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, fileName);
+    // 1. Define the expected path
+    String path = await getDatabasesPath();
+    String fullPath = '$path/verball.db';
 
-    // Check if DB already exists on the device
-    final exists = await databaseExists(path);
-
-    if (!exists) {
-      // If it doesn't exist, extract it from the assets folder
-      try {
-        await Directory(dirname(path)).create(recursive: true);
-      } catch (_) {}
-      
-      ByteData data = await rootBundle.load("assets/$fileName");
-      List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      
-      await File(path).writeAsBytes(bytes, flush: true);
-    }
-    
-    return await openDatabase(path);
-  }
-
-  Future<List<VerbForm>> getAllFazerForms() async {
-    final db = await instance.database;
-    // Querying the DB where verb_id = 1 (assuming Fazer is verb 1 from our seed)
-    final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
-    
-    return List.generate(maps.length, (i) {
-      return VerbForm(
-        maps[i]['form_text'] as String,
-        maps[i]['label_short'] as String,
+    // 2. Validate existence (The Fail-Fast Check)
+    if (!await File(fullPath).exists()) {
+      throw FileSystemException(
+        "CRITICAL: Database file 'verball.db' not found at $fullPath. "
+        "Please check your installation path and configuration settings."
       );
-    });
-  }
+    }
+
+    // 3. Only proceed if it exists
+    _database = await openDatabase(fullPath);
+    return _database!;
+  }  // ======================
+
+// Separates db existence logic from getAllFazerForms, and we can reuse the safety check for other queries.
+Future<T> _executeSafeQuery<T>(Future<T> Function(Database db) action) async {
+  final db = await instance.database; // This will trigger the Fail-Fast check
+  return await action(db);
+}
+
+// Your query function becomes much simpler:
+Future<List<VerbForm>> getAllFazerForms() async {
+  return await _executeSafeQuery((db) async {
+    final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
+    return List.generate(maps.length, (i) => VerbForm(
+      maps[i]['form_text'] as String,
+      maps[i]['label_short'] as String,
+    ));
+  });
+}
 }
 
 // --- WIDGET DEFINITIONS ---
