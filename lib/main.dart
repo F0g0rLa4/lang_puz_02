@@ -42,46 +42,52 @@ enum TypeDirection { neutral, across, down }
 
 // --- DATABASE HELPER ---
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
-  static Database? _database;   // Empty at start, no db opened yet
+  // Outline: App code calls (e.g.) DatabaseHelper.instance.getAllFazerForms() to get data.
+  // getAllFazerForms calls _executeSafeQuery, 
+  // executeSafeQuery calls get database which checks for existence, opens db, and returns it
 
-  DatabaseHelper._init();
+  static final DatabaseHelper instance = DatabaseHelper._init(); // Final only assigned one time
+  static Database? _database;   // Static means unchanging once built. Empty at start, no db opened yet
+  // Constructor
+  DatabaseHelper._init();  //No Return Type + Name Matches + parens ( EMPTY in this case ) 
+   // and this one is private.  Bcs defined, no default constructor.
 
-Future<Database> get database async {
-    if (_database != null) return _database!;
+   // Methods
+  Future<Database> get database async {
+      if (_database != null) return _database!;
 
-    // 1. Define the expected path
-    String path = await getDatabasesPath();
-    String fullPath = '$path/verball.db';
+      // 1. Define the expected path
+      String path = await getDatabasesPath();
+      String fullPath = '$path/verball.db';
 
-    // 2. Validate existence (The Fail-Fast Check)
-    if (!await File(fullPath).exists()) {
-      throw FileSystemException(
-        "CRITICAL: Database file 'verball.db' not found at $fullPath. "
-        "Please check your installation path and configuration settings."
-      );
-    }
+      // 2. Validate existence (The Fail-Fast Check)
+      if (!await File(fullPath).exists()) {
+        throw FileSystemException(
+          "CRITICAL: Database file 'verball.db' not found at $fullPath. "
+          "Please check your installation path and configuration settings."
+        );
+      }
 
-    // 3. Only proceed if it exists
-    _database = await openDatabase(fullPath);
-    return _database!;
-  }  // ======================
+      // 3. Only proceed if it exists
+      _database = await openDatabase(fullPath);
+      return _database!;
+    }  // ======================
 
-// Separates db existence logic from getAllFazerForms, and we can reuse the safety check for other queries.
-Future<T> _executeSafeQuery<T>(Future<T> Function(Database db) action) async {
-  final db = await instance.database; // This will trigger the Fail-Fast check
-  return await action(db);
-}
+  // Separates db existence logic from getAllFazerForms, and we can reuse the safety check for other queries.
+  Future<T> _executeSafeQuery<T>(Future<T> Function(Database db) action) async {
+    final db = await instance.database; // This will trigger the Fail-Fast check
+    return await action(db);
+  }
 
-// Your query function becomes much simpler:
-Future<List<VerbForm>> getAllFazerForms() async {
-  return await _executeSafeQuery((db) async {
-    final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
-    return List.generate(maps.length, (i) => VerbForm(
-      maps[i]['form_text'] as String,
-      maps[i]['label_short'] as String,
-    ));
-  });
+  // Your query function becomes much simpler:
+  Future<List<VerbForm>> getAllFazerForms() async {
+    return await _executeSafeQuery((db) async {
+      final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
+      return List.generate(maps.length, (i) => VerbForm(
+        maps[i]['form_text'] as String,
+        maps[i]['label_short'] as String,
+      ));
+    });
 }
 }
 
