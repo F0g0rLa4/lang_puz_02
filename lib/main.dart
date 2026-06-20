@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
+import 'package:lang_puz_02/utils/app_logger.dart';
 // handles different path formats among platforms. p prevents naming collision like "context"
 // import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
@@ -11,7 +12,9 @@ void main() async {
   //so the correct desktop bridge is already in place.
   WidgetsFlutterBinding.ensureInitialized();
     // Initialize desktop SQLite FFI for Windows development
-  sqfliteFfiInit();  // Initialize
+  sqfliteFfiInit();  
+  // Initialize the physical log file
+  await AppLogger.init();
   databaseFactory = databaseFactoryFfi; // Set factory to FFI instead of default mobile
 
   runApp(const CrosswordApp());
@@ -147,7 +150,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     });
 
   } on FileSystemException catch (e) {
-    print("Database file not found: ${e.message}");
+    AppLogger.error("Database file not found: ${e.message}");
     // The await threw an error. Did the user leave the screen?
     // We MUST check this before trying to show a dialog using 'context'.
     if (!mounted) return;
@@ -169,7 +172,7 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
       ),
     );
   } catch (e) {
-    print("An unexpected error occurred: $e");
+    AppLogger.error("An unexpected error occurred: $e");
   } finally {
     if (mounted) {
     setState(() {
