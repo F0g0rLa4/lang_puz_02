@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
-import 'package:path/path.dart';  // handles different path formats among platforms
-// import 'package:sqflite/sqflite.dart'; redundant
+// handles different path formats among platforms. p prevents naming collision like "context"
+// import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
 
 void main() async {
@@ -61,6 +61,10 @@ class DatabaseHelper {
       String fullPath = '$path/verball.db';
 
       // 2. Validate existence (The Fail-Fast Check)
+      // This throws the message up to the caller to catch and handle
+      // Caller was _loadDataFromDatabase, 
+      // which called DatabaseHelper.instance.getAllFazerForms(), 
+      // which called _executeSafeQuery, which called this getter
       if (!await File(fullPath).exists()) {
         throw FileSystemException(
           "CRITICAL: Database file 'verball.db' not found at $fullPath. "
@@ -133,12 +137,47 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
 
   // --- ASYNC DATA LOADING ---
   Future<void> _loadDataFromDatabase() async {
+  try {
     final forms = await DatabaseHelper.instance.getAllFazerForms();
+    // The await finished. Did the user leave the screen?
+    // If yes, stop the whole function right here.
+    if (!mounted) return;  // After await always call mounted check before using context or setState
     setState(() {
       fazerForms = forms;
-      isLoading = false; // Hide the loading spinner once data is fetched
     });
-  }
+
+  } on FileSystemException catch (e) {
+    print("Database file not found: ${e.message}");
+    // The await threw an error. Did the user leave the screen?
+    // We MUST check this before trying to show a dialog using 'context'.
+    if (!mounted) return;
+    setState(() {
+      isLoading = false; // Hide the loading spinner even if there's an error
+    });
+    // Show a dialog or snackbar to inform the user about the missing database
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Database Error"),
+        content: Text("Failed to load database: ${e.message}"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  } catch (e) {
+    print("An unexpected error occurred: $e");
+  } finally {
+    if (mounted) {
+    setState(() {
+      isLoading = false; // Hide the loading spinner even if there's an error
+    });
+    } // If the widget is still mounted
+  } // finally
+  } // _loadDataFromDatabase
 
   @override
   void dispose() {
