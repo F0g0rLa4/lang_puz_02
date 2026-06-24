@@ -1,3 +1,0 @@
-SQLite initial prompt for dialogue
-This app currently keeps the forms of the verb fazer that are used in the crossword in a separate file and loads them on starting the crossword. I want your opinion on the following: If I am going track 100 verbs or more each with 70+ simple parts and eventually compound forms, and then track user encounters with these forms, e.g. how many times, how many times successfully, etc. ... would I better off creating a sqllite database for this, cronstructing the necessary schema and sql ... further offering a more robust model if I need to go even bigger in the future with an online database for multiple languages and users? If so, can you build the sqlite database? 
-
