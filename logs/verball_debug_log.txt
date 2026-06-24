@@ -1,3 +1,0 @@
-[2026-06-20 20:21:25.207924] [INFO] === Build Commit: 5f68b34 (F5 Debug) ===
-[2026-06-20 20:21:25.730751] [ERROR] Database file not found: CRITICAL: Database file 'verball.db' not found at C:\Users\HRogo\Code\lang_puz_02\.dart_tool\sqflite_common_ffi\databases/verball.db. Please check your installation path and configuration settings.
-[2026-06-20 20:22:37.767916] [INFO] === Build Commit: 5f68b34 (F5 Debug) ===

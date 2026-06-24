@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
-import 'package:lang_puz_02/utils/app_logger.dart';
+//import 'package:package_info_plus/package_info_plus.dart';  // barrel
 // handles different path formats among platforms. p prevents naming collision like "context"
 // import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
+import 'package:lang_puz_02/utils/aa_logger_meta.dart';  // barrel for AppLogger and metadata
 
 void main() async {
   //Wakes up Native Engine before runApp wakes the UI asking for data, 
@@ -14,7 +15,28 @@ void main() async {
     // Initialize desktop SQLite FFI for Windows development
   sqfliteFfiInit();  
   // Initialize the physical log file
-  await AppLogger.init();
+// 1. Gather System and App Metadata
+  String osInfo = getDetailedOS();
+  String appName = await getAppName(); // e.g., "Verball"
+  String appVersion = await getAppSemanticVersion(); // e.g., "1.0.4+2"
+
+  // 2. Open the Database and Extract DB Metadata
+  // (Replace with your actual database opening logic/path)
+  String dbPath = 'my_bundled_db.SQLite'; 
+  Database db = await openDatabase(dbPath);
+  
+  String dbVersion = await getBundledDbVersion(db);
+
+  // 3. Combine everything into your master string
+  String metadataCombined = 'OS: $osInfo | App Version: $appVersion | Bundled DB Version: $dbVersion';
+
+  // 4. Initialize the Logger
+  await AppLogger.init(
+    appName: appName,
+    metadataCombined: metadataCombined,
+  );
+
+  AppLogger.info('App initialization complete. Booting UI.');
   databaseFactory = databaseFactoryFfi; // Set factory to FFI instead of default mobile
 
   runApp(const CrosswordApp());

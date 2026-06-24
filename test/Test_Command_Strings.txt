@@ -1,5 +1,0 @@
-// Test strings
-
-// Relatively bullet proof testing against Chrome if probs with other emulators
-// but has its own quirks.
-// flutter run -t test/widget_test.dart -d chrome

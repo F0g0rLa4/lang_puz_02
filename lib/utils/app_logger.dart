@@ -8,10 +8,21 @@ import 'package:path_provider/path_provider.dart';
 class AppLogger {
   static File? _logFile;
   
+  // Store these at the class level so info() and error() can access them
+  static String _appName = 'App';
+  static String _sessionMetadata = 'No metadata provided';
+
   // The Catcher's Mitt: Looks for a variable passed via --dart-define from the compiler
   static const String _envCommit = String.fromEnvironment('GIT_COMMIT');
 
-static Future<void> init() async {
+  /// Requires the appName and metadataCombined to be passed in from main.dart
+  static Future<void> init({
+    required String appName,
+    required String metadataCombined,
+  }) async {
+    _appName = appName;
+    _sessionMetadata = metadataCombined;
+
     try {
       String logDirectoryPath;
 
@@ -29,15 +40,21 @@ static Future<void> init() async {
         logDirectoryPath = directory.path;
       }
 
-      final path = '$logDirectoryPath/verball_debug_log.txt';
+      // Make the log file name dynamic based on the app name
+      final safeAppName = appName.toLowerCase().replaceAll(' ', '_');
+      final path = '$logDirectoryPath/${safeAppName}_debug_log.txt';
       _logFile = File(path);
 
       String currentCommit = await _getCommitHash();
 
       print("📝 [AppLogger] Writing physical logs to: $path");
       
-      info("=== App Started ===");
+      // Injecting the metadata_combined into the initialization sequence
+      info("========================================");
+      info("=== $_appName Started ===");
       info("=== Build Commit: $currentCommit ===");
+      info("=== Session Metadata: $_sessionMetadata ===");
+      info("========================================");
       
     } catch (e) {
       print("Failed to initialize log file: $e");
@@ -95,7 +112,8 @@ static Future<void> init() async {
   // 4. Your Info log
   static void info(String message) {
     if (kDebugMode) {
-      developer.log(message, name: 'Verball.Info');
+      // Made dynamic instead of hardcoding 'Verball.Info'
+      developer.log(message, name: '$_appName.Info');
       _writeToFile('[INFO]', message);
     }
   }
@@ -103,8 +121,11 @@ static Future<void> init() async {
   // 5. Your Error log
   static void error(String message, [Object? error, StackTrace? stackTrace]) {
     if (kDebugMode) {
-      developer.log(message, name: 'Verball.Error', error: error, stackTrace: stackTrace, level: 1000);
-      _writeToFile('[ERROR]', message, error, stackTrace);
+      // Automatically append the session metadata to every error for easier debugging
+      final contextMessage = '$message | Meta: $_sessionMetadata';
+      
+      developer.log(contextMessage, name: '$_appName.Error', error: error, stackTrace: stackTrace, level: 1000);
+      _writeToFile('[ERROR]', contextMessage, error, stackTrace);
     }
   }
 }
