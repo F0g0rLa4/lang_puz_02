@@ -3,8 +3,8 @@ import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
 //import 'package:package_info_plus/package_info_plus.dart';  // barrel
-// handles different path formats among platforms. p prevents naming collision like "context"
-// import 'package:path/path.dart' as p;  
+// handles different path formats among platforms. "as p" prevents naming collision like "context"
+import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';  // barrel for AppLogger and metadata
 
@@ -13,44 +13,67 @@ void main() async {
   //so the correct desktop bridge is already in place.
   WidgetsFlutterBinding.ensureInitialized();
     // Initialize desktop SQLite FFI for Windows development
-  sqfliteFfiInit();  
+  sqfliteFfiInit(); 
+  // Set factory to FFI instead of default mobile
+  databaseFactory = databaseFactoryFfi; 
+
   // Initialize the physical log file
 // 1. Gather System and App Metadata
   String osInfo = getDetailedOS();
   String appName = await getAppName(); // e.g., "Verball"
   String appVersion = await getAppSemanticVersion(); // e.g., "1.0.4+2"
 
-  // 2. Open the Database and Extract DB Metadata
-  // (Replace with your actual database opening logic/path)
-  String dbPath = 'my_bundled_db.SQLite'; 
+// 2. Safely resolve the database path
+  String databasesPath = await getDatabasesPath();
+  String dbPath = p.join(databasesPath, 'verball.db');
+
+  // 3. THE ASSET COPY PATTERN: Check if the DB exists, copy if it doesn't
+  bool dbExists = await databaseExists(dbPath);
+
+  if (!dbExists) {
+    print("Database not found. Copying from assets...");
+    
+    // Ensure the parent directory exists
+    try {
+      await Directory(p.dirname(dbPath)).create(recursive: true);
+    } catch (_) {}
+
+    // Load the file from the assets folder
+    ByteData data = await rootBundle.load(p.join('assets', 'verball.db'));
+    List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    
+    // Write the bytes to the device's secure database directory
+    await File(dbPath).writeAsBytes(bytes, flush: true);
+    print("Database copied successfully.");
+  }
+
+  // 4. Open the Database and Extract DB Metadata
   Database db = await openDatabase(dbPath);
-  
   String dbVersion = await getBundledDbVersion(db);
 
-  // 3. Combine everything into your master string
+  // 5. Combine everything into your master string
   String metadataCombined = 'OS: $osInfo | App Version: $appVersion | Bundled DB Version: $dbVersion';
 
-  // 4. Initialize the Logger
+  // 6. Initialize the Logger
   await AppLogger.init(
     appName: appName,
     metadataCombined: metadataCombined,
   );
-
   AppLogger.info('App initialization complete. Booting UI.');
-  databaseFactory = databaseFactoryFfi; // Set factory to FFI instead of default mobile
-
-  runApp(const CrosswordApp());
+ 
+  runApp(CrosswordApp(metadataCombined: metadataCombined));
 }
 
 class CrosswordApp extends StatelessWidget {
-  const CrosswordApp({super.key});
+  final String metadataCombined;
+  const CrosswordApp({super.key, required this.metadataCombined});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Verb Crossword Mockup',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const CrosswordHomepage(),
+      home:  CrosswordHomepage(metadataCombined: metadataCombined),
     );
   }
 }
@@ -122,7 +145,11 @@ class DatabaseHelper {
 
 // --- WIDGET DEFINITIONS ---
 class CrosswordHomepage extends StatefulWidget {
-  const CrosswordHomepage({super.key});
+  final String metadataCombined;
+  const CrosswordHomepage({
+    super.key,
+    required this.metadataCombined
+    });
 
   @override
   State<CrosswordHomepage> createState() => _CrosswordHomepageState();
@@ -408,7 +435,25 @@ class _CrosswordHomepageState extends State<CrosswordHomepage> {
     if (currentDirection == TypeDirection.neutral) promptText = "Mode: Neutral (Overlap Clicked)";
 
     return Scaffold(
-      appBar: AppBar(title: const String.fromEnvironment("title") == "" ? const Text("Verb Crossword Mockup") : null),
+appBar: AppBar(
+        title: const String.fromEnvironment("title") == "" 
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start, // Aligns both lines to the left
+                mainAxisSize: MainAxisSize.min, // Prevents the column from breaking the AppBar height
+                children: [
+                  const Text("Verb Crossword Mockup"),
+                  Text(
+                    widget.metadataCombined,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                      fontSize: 14.0, // Default AppBar text is 20.0, so 14.0 is roughly 2/3 height
+                    ),
+                  ),
+                ],
+              ) 
+            : null,
+      ),  // AppBar
       body: Row(
         children: [
           Expanded(

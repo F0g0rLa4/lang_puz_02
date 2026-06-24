@@ -1,5 +1,13 @@
 # Test Protocol
 
+## Database from creator correct?
+
+o Insure creator actually updated the db to new timestamp & consumer has it. 
+
+## Code Changes by Platform
+
+o Make sure databaseFactory is correct for desktop or mobile as required.
+
 ## Run *_test.dart in integration mode to see keystroke behavior complies
 
 ## Test for db missing
