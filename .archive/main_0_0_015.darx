@@ -2,44 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:async';  // for Timer
 import 'dart:io';     // for File
+//import 'package:package_info_plus/package_info_plus.dart';  // barrel
+// handles different path formats among platforms. "as p" prevents naming collision like "context"
 import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';  // barrel for AppLogger and metadata
 
 void main() async {
+  //Wakes up Native Engine before runApp wakes the UI asking for data, 
+  //so the correct desktop bridge is already in place.
   WidgetsFlutterBinding.ensureInitialized();
 
+// If we are testing on the ThinkPad or Mac, turn on FFI. 
+  // If this is Android/iOS, ignore this block entirely.
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi; 
   }
 
+  // Initialize the physical log file
+// 1. Gather System and App Metadata
   String osInfo = getDetailedOS();
-  String appName = await getAppName(); 
-  String appVersion = await getAppSemanticVersion(); 
+  String appName = await getAppName(); // e.g., "Verball"
+  String appVersion = await getAppSemanticVersion(); // e.g., "1.0.4+2"
 
+// 2. Safely resolve the database path
   String databasesPath = await getDatabasesPath();
   String dbPath = p.join(databasesPath, 'verball.db');
 
+  // 3. THE ASSET COPY PATTERN: Check if the DB exists, copy if it doesn't
   bool dbExists = await databaseExists(dbPath);
 
   if (!dbExists) {
     print("Database not found. Copying from assets...");
+    
+    // Ensure the parent directory exists
     try {
       await Directory(p.dirname(dbPath)).create(recursive: true);
     } catch (_) {}
 
+    // Load the file from the assets folder
     ByteData data = await rootBundle.load(p.join('assets', 'verball.db'));
     List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    
+    // Write the bytes to the device's secure database directory
     await File(dbPath).writeAsBytes(bytes, flush: true);
     print("Database copied successfully.");
   }
 
+  // 4. Open the Database and Extract DB Metadata
   Database db = await openDatabase(dbPath);
-  String dbVersion = await getBundledDbVersion(db);
+  String dbVersion = await getBundledDbVersion(db);  // Just the version name
 
+  // 5. Combine everything into your master string
   String metadataCombined = 'OS: $osInfo | App Version: $appVersion | Bundled DB Version: $dbVersion';
 
+  // 6. Initialize the Logger
   await AppLogger.init(
     appName: appName,
     metadataCombined: metadataCombined,
@@ -56,35 +74,48 @@ class LangPuzzles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Language Puzzles',
+      title: 'Verb Crossword Mockup',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: PuzzleChoicesPage(metadataCombined: metadataCombined),
+      home:  CrosswordHomepage(metadataCombined: metadataCombined),
     );
   }
 }
 
-// --- DATA STRUCTURES & DATABASE HELPER ---
+// --- DATA STRUCTURES ---
 class VerbForm {
   final String form;
-  final String label;
+  final String label; // e.g., "1st pres. indic."
   const VerbForm(this.form, this.label);
 }
 
-enum CellType { colCell, rowCell, overlapCell } 
+enum CellType { colCell, rowCell, overlapCell } // Strict lists
 enum TypeDirection { neutral, across, down }
 
+// --- DATABASE HELPER ---
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
-  static Database? _database;
-  
-  DatabaseHelper._init(); 
+  // Outline: App code calls (e.g.) DatabaseHelper.instance.getAllFazerForms() to get data.
+  // getAllFazerForms calls _executeSafeQuery, 
+  // executeSafeQuery calls get database which checks for existence, opens db, and returns it
 
+  static final DatabaseHelper instance = DatabaseHelper._init(); // Final only assigned one time
+  static Database? _database;   // Static means unchanging once built. Empty at start, no db opened yet
+  // Constructor
+  DatabaseHelper._init();  //No Return Type + Name Matches + parens ( EMPTY in this case ) 
+   // and this one is private.  Bcs defined, no default constructor.
+
+   // Methods
   Future<Database> get database async {
       if (_database != null) return _database!;
 
+      // 1. Define the expected path
       String path = await getDatabasesPath();
       String fullPath = '$path/verball.db';
 
+      // 2. Validate existence (The Fail-Fast Check)
+      // This throws the message up to the caller to catch and handle
+      // Caller was _loadDataFromDatabase, 
+      // which called DatabaseHelper.instance.getAllFazerForms(), 
+      // which called _executeSafeQuery, which called this getter
       if (!await File(fullPath).exists()) {
         throw FileSystemException(
           "CRITICAL: Database file 'verball.db' not found at $fullPath. "
@@ -92,15 +123,18 @@ class DatabaseHelper {
         );
       }
 
+      // 3. Only proceed if it exists
       _database = await openDatabase(fullPath);
       return _database!;
-  }
+    }  // ======================
 
+  // Separates db existence logic from getAllFazerForms, and we can reuse the safety check for other queries.
   Future<T> _executeSafeQuery<T>(Future<T> Function(Database db) action) async {
-    final db = await instance.database;
+    final db = await instance.database; // This will trigger the Fail-Fast check
     return await action(db);
   }
 
+  // Your query function becomes much simpler:
   Future<List<VerbForm>> getAllFazerForms() async {
     return await _executeSafeQuery((db) async {
       final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
@@ -109,91 +143,22 @@ class DatabaseHelper {
         maps[i]['label_short'] as String,
       ));
     });
-  }
+}
 }
 
-// --- PAGE 1: PUZZLE CHOICES ---
-class PuzzleChoicesPage extends StatefulWidget {
+// --- WIDGET DEFINITIONS ---
+class CrosswordHomepage extends StatefulWidget {
   final String metadataCombined;
-  const PuzzleChoicesPage({super.key, required this.metadataCombined});
-
-  @override
-  State<PuzzleChoicesPage> createState() => _PuzzleChoicesPageState();
-}
-
-class _PuzzleChoicesPageState extends State<PuzzleChoicesPage> {
-  String? selectedPuzzle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text("Language Puzzles"),
-            Text(
-              widget.metadataCombined,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontStyle: FontStyle.italic,
-                fontSize: 14.0,
-              ),
-            ),
-          ],
-        ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              "Choose Your Puzzle",
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            DropdownButton<String>(
-              value: selectedPuzzle,
-              hint: const Text("Select a puzzle..."),
-              items: <String>["Crossword"].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                if (newValue == "Crossword") {
-                  // Navigate to Crossword, push will allow us to easily pop back and destroy Crossword state
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => Crossword(metadataCombined: widget.metadataCombined),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- PAGE 2: CROSSWORD ---
-class Crossword extends StatefulWidget {
-  final String metadataCombined;
-  const Crossword({
+  const CrosswordHomepage({
     super.key,
     required this.metadataCombined
-  });
+    });
 
   @override
-  State<Crossword> createState() => _CrosswordState();
+  State<CrosswordHomepage> createState() => _CrosswordHomepageState();
 }
 
-class _CrosswordState extends State<Crossword> {
+class _CrosswordHomepageState extends State<CrosswordHomepage> {
   final int colLen = 3;
   final int rowLen = 5;
   final int ovrCol = 2; 
@@ -214,8 +179,9 @@ class _CrosswordState extends State<Crossword> {
   
   Timer? flashTimer;
 
+  // DB Data Variables
   List<VerbForm> fazerForms = [];
-  bool isLoading = true;
+  bool isLoading = true; // Track loading state
 
   @override
   void initState() {
@@ -224,38 +190,49 @@ class _CrosswordState extends State<Crossword> {
     _loadDataFromDatabase(); 
   }
 
+  // --- ASYNC DATA LOADING ---
   Future<void> _loadDataFromDatabase() async {
-    try {
-      final forms = await DatabaseHelper.instance.getAllFazerForms();
-      if (!mounted) return; 
-      setState(() {
-        fazerForms = forms;
-      });
-    } on FileSystemException catch (e) {
-      AppLogger.error("Database file not found: ${e.message}");
-      if (!mounted) return;
-      setState(() { isLoading = false; });
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text("Database Error"),
-          content: Text("Failed to load database: ${e.message}"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      AppLogger.error("An unexpected error occurred: $e");
-    } finally {
-      if (mounted) {
-        setState(() { isLoading = false; });
-      }
-    } 
-  } 
+  try {
+    final forms = await DatabaseHelper.instance.getAllFazerForms();
+    // The await finished. Did the user leave the screen?
+    // If yes, stop the whole function right here.
+    if (!mounted) return;  // After await always call mounted check before using context or setState
+    setState(() {
+      fazerForms = forms;
+    });
+
+  } on FileSystemException catch (e) {
+    AppLogger.error("Database file not found: ${e.message}");
+    // The await threw an error. Did the user leave the screen?
+    // We MUST check this before trying to show a dialog using 'context'.
+    if (!mounted) return;
+    setState(() {
+      isLoading = false; // Hide the loading spinner even if there's an error
+    });
+    // Show a dialog or snackbar to inform the user about the missing database
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Database Error"),
+        content: Text("Failed to load database: ${e.message}"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  } catch (e) {
+    AppLogger.error("An unexpected error occurred: $e");
+  } finally {
+    if (mounted) {
+    setState(() {
+      isLoading = false; // Hide the loading spinner even if there's an error
+    });
+    } // If the widget is still mounted
+  } // finally
+  } // _loadDataFromDatabase
 
   @override
   void dispose() {
@@ -429,40 +406,9 @@ class _CrosswordState extends State<Crossword> {
     }
   }
 
-  // Handle Return Button with Confirmation
-  void _confirmReturn() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Return to Choices?"),
-          content: const Text("Do you want to return to Choices and lose your work?"),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(), // Close dialog
-              child: const Text("No"),
-            ),
-            TextButton(
-              onPressed: () {
-                // Pop the dialog, then replace current screen with fresh Home screen to reset state completely
-                Navigator.of(context).pop();
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PuzzleChoicesPage(metadataCombined: widget.metadataCombined),
-                  ),
-                );
-              },
-              child: const Text("Yes"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Show a loading spinner if the database is still being read
     if (isLoading) {
       return const Scaffold(
         body: Center(
@@ -492,97 +438,82 @@ class _CrosswordState extends State<Crossword> {
     if (currentDirection == TypeDirection.neutral) promptText = "Mode: Neutral (Overlap Clicked)";
 
     return Scaffold(
-      // We removed the standard AppBar to create the custom Header Row
-      body: SafeArea(
-        child: Column(
-          children: [
-            // --- HEADER ROW (Title left, Dropdown right) ---
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+      appBar: AppBar(
+        title: const String.fromEnvironment("title") == "" 
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start, // Aligns both lines to the left
+                mainAxisSize: MainAxisSize.min, // Prevents the column from breaking the AppBar height
                 children: [
-                  const Text(
-                    "CrossWord",
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  const Spacer(),
-                  // The Dropdown and List restricted to ~4 lines height
-                  Container(
-                    width: 250, // Keeps the dropdown from expanding too far left
-                    padding: const EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade300)
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text("pickFrom: \"Fazer\"", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                        DropdownButton<String>(
-                          value: verbDisplayMode,
-                          isExpanded: true, // Fills the container width
-                          onChanged: (String? newValue) {
-                            if (newValue != null) {
-                              setState(() { verbDisplayMode = newValue; });
-                            }
-                          },
-                          items: <String>[
-                            "Guess!",
-                            "Only those simple forms which fit",
-                            "All simple forms"
-                          ].map<DropdownMenuItem<String>>((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value, style: const TextStyle(fontSize: 12)),
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 4),
-                        // Explicitly limits height to roughly 4 lines of text
-                        SizedBox(
-                          height: 90, 
-                          child: _buildVerbList(),
-                        ),
-                      ],
+                  const Text("Verb Crossword Mockup"),
+                  Text(
+                    widget.metadataCombined,
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                      fontSize: 14.0, // Default AppBar text is 20.0, so 14.0 is roughly 2/3 height
                     ),
                   ),
                 ],
-              ),
-            ),
-            
-            const Divider(),
-
-            // --- MAIN CONTENT BODY (Crossword Grid) ---
-            Expanded(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        promptText,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-                      ),
-                      const SizedBox(height: 40),
-                      _buildCrosswordGrid(letterColor, letterWeight),
-                    ],
-                  ),
+              ) 
+            : null,
+      ),  // AppBar
+      body: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      promptText,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                    ),
+                    const SizedBox(height: 40),
+                    _buildCrosswordGrid(letterColor, letterWeight),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-      
-      // --- BOTTOM RIGHT RETURN BUTTON ---
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _confirmReturn,
-        label: const Text("Return"),
-        icon: const Icon(Icons.arrow_back),
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(
+            flex: 2,
+            child: Container(
+              color: Colors.grey[50],
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("pickFrom: \"Fazer\"", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                  const Divider(),
+                  DropdownButton<String>(
+                    value: verbDisplayMode,
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() { verbDisplayMode = newValue; });
+                      }
+                    },
+                    items: <String>[
+                      "Guess!",
+                      "Only those simple forms which fit",
+                      "All simple forms"
+                    ].map<DropdownMenuItem<String>>((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value, style: const TextStyle(fontSize: 12)),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: _buildVerbList()),
+                ],
+              ),
+            ),
+          )
+        ],
       ),
     );
   }
@@ -679,8 +610,7 @@ class _CrosswordState extends State<Crossword> {
     List<VerbForm> formsToShow = _getFilteredForms();
 
     if (formsToShow.isEmpty) {
-      return Container(
-        alignment: Alignment.topRight,
+      return Center(
         child: Text(
           verbDisplayMode == "Guess!" ? "Make your guess!" : "No forms match.",
           style: const TextStyle(fontSize: 13, color: Colors.grey),
@@ -690,14 +620,11 @@ class _CrosswordState extends State<Crossword> {
 
     return ListView.builder(
       itemCount: formsToShow.length,
-      // Ensures the ListView takes up minimal required space
-      shrinkWrap: true, 
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2.0),
           child: Text(
             "${formsToShow[index].label}: ${formsToShow[index].form}",
-            textAlign: TextAlign.right,
             style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
           ),
         );
