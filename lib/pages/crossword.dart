@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';
-import 'package:lang_puz_02/utils/dbhelper_datastructures.dart';
+import 'package:lang_puz_02/utils/dbhelper_models.dart';
 // You must also import wherever you choose to put DatabaseHelper, VerbForm, CellType, and TypeDirection.
 // e.g., import 'package:lang_puz_02/utils/database_helper.dart';
 
