@@ -1,10 +1,12 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:io';
-
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';
 import 'package:lang_puz_02/utils/dbhelper_models.dart';
+// You must also import wherever you choose to put DatabaseHelper, VerbForm, CellType, and TypeDirection.
+// e.g., import 'package:lang_puz_02/utils/database_helper.dart';
 
 // --- PAGE 2: CROSSWORD ---
 class Crossword extends StatefulWidget {
@@ -24,22 +26,12 @@ class _CrosswordState extends State<Crossword> {
   final int ovrCol = 2; 
   final int ovrRow = 5; 
 
-  // Calculated overlap indices
-  late final int overlapColIndex = ovrCol - 1;
-  late final int overlapRowIndex = ovrRow - 1;
+  final Map<int, TextEditingController> colControllers = {};
+  final Map<int, TextEditingController> rowControllers = {};
+  final Map<int, FocusNode> colNodes = {};
+  final Map<int, FocusNode> rowNodes = {};
 
-  // 1. NEW DATA STATE: Simple lists instead of Heavy TextFields
-  List<String> colLetters = [];
-  List<String> rowLetters = [];
-
-  // Track which cell the user has selected
   TypeDirection currentDirection = TypeDirection.neutral;
-  int? activeRowIdx;
-  int? activeColIdx;
-
-  // 2. THE HIDDEN INPUT: One connection to the OS keyboard
-  final FocusNode hiddenNode = FocusNode();
-  final TextEditingController hiddenController = TextEditingController();
 
   bool isValidated = false;
   bool showRedLetters = false;
@@ -48,6 +40,7 @@ class _CrosswordState extends State<Crossword> {
   String verbDisplayMode = "Guess!"; 
   
   Timer? flashTimer;
+
   List<VerbForm> fazerForms = [];
   bool isLoading = true;
 
@@ -56,38 +49,6 @@ class _CrosswordState extends State<Crossword> {
     super.initState();
     _initializeGrid();
     _loadDataFromDatabase(); 
-
-    // Intercept hardware keys on the hidden text field
-    hiddenNode.onKeyEvent = (node, event) {
-      // 1. Handle Backspace (Move backward)
-      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.backspace) {
-        if (_isCurrentCellEmpty()) {
-            _moveFocus(forward: false);
-            _clearCurrentCell();
-          } else {
-            _clearCurrentCell();
-          }
-        return KeyEventResult.handled;
-      }
-      // 2. Handle Delete (Just erase current cell)
-        else if (event.logicalKey == LogicalKeyboardKey.delete) {
-          _clearCurrentCell();
-          return KeyEventResult.handled;
-        }
-      // 3. Handle Tab (Move forward, or backward if Shift is held)
-      else if (event.logicalKey == LogicalKeyboardKey.tab) {
-          bool isShift = HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
-                         HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight);
-          _moveFocus(forward: !isShift);
-          return KeyEventResult.handled;
-        }
-      return KeyEventResult.ignored;
-    }; // hiddenNode.onKeyEvent
-  } // initState
-
-  void _initializeGrid() {
-    colLetters = List.filled(colLen, "");
-    rowLetters = List.filled(rowLen, "");
   }
 
   Future<void> _loadDataFromDatabase() async {
@@ -126,108 +87,130 @@ class _CrosswordState extends State<Crossword> {
   @override
   void dispose() {
     flashTimer?.cancel();
-    hiddenNode.dispose();
-    hiddenController.dispose();
+    final allNodes = {...colNodes.values, ...rowNodes.values};
+    for (var node in allNodes) { node.dispose(); }
+
+    final allControllers = {...colControllers.values, ...rowControllers.values};
+    for (var controller in allControllers) { controller.dispose(); }
     super.dispose();
   }
 
-  // Handle keystrokes from the hidden input
-  void _onHiddenTextChanged(String value) {
-    if (value.isEmpty) return;
-    
-    // Grab the actual letter typed
-    String newLetter = value[value.length - 1];
-    // Ignore anything that isn't an actual letter (like the \t tab dropped into the cell) to avoid double jumps
-    if (!RegExp(r'[a-zA-Z]').hasMatch(newLetter)) {
-      hiddenController.clear();
-      return;
-    }
-    
-    setState(() {
-      if (currentDirection == TypeDirection.across && activeRowIdx != null) {
-        rowLetters[activeRowIdx!] = newLetter;
-        // Sync the intersection
-        if (activeRowIdx == overlapRowIndex) colLetters[overlapColIndex] = newLetter;
-      } else if (currentDirection == TypeDirection.down && activeColIdx != null) {
-        colLetters[activeColIdx!] = newLetter;
-        // Sync the intersection
-        if (activeColIdx == overlapColIndex) rowLetters[overlapRowIndex] = newLetter;
-      }
-    });
+  void _initializeGrid() {
+    int overlapColIndex = ovrCol - 1;
+    int overlapRowIndex = ovrRow - 1;
 
-    _moveFocus(forward: true);
-    // Clear the hidden text field so it's ready for the next letter
-    hiddenController.clear();
-    _validatePuzzle();
+    TextEditingController overlapController = TextEditingController();
+    FocusNode overlapNode = _createCustomFocusNode();
+    overlapController.addListener(_validatePuzzle);
+
+    for (int i = 0; i < rowLen; i++) {
+      if (i == overlapRowIndex) {
+        rowControllers[i] = overlapController;
+        rowNodes[i] = overlapNode;
+      } else {
+        rowControllers[i] = TextEditingController()..addListener(_validatePuzzle);
+        rowNodes[i] = _createCustomFocusNode();
+      }
+    }
+
+    for (int i = 0; i < colLen; i++) {
+      if (i == overlapColIndex) {
+        colControllers[i] = overlapController;
+        colNodes[i] = overlapNode;
+      } else {
+        colControllers[i] = TextEditingController()..addListener(_validatePuzzle);
+        colNodes[i] = _createCustomFocusNode();
+      }
+    }
+  }
+
+  FocusNode _createCustomFocusNode() {
+    return FocusNode(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
+          bool isShift = HardwareKeyboard.instance.isShiftPressed;
+          _moveFocus(forward: !isShift);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+    );
   }
 
   void _moveFocus({required bool forward}) {
-    setState(() {
-      if (currentDirection == TypeDirection.across && activeRowIdx != null) {
-        if (forward && activeRowIdx! < rowLen - 1) {
-          activeRowIdx = activeRowIdx! + 1;
-        } else if (!forward && activeRowIdx! > 0) {
-          activeRowIdx = activeRowIdx! - 1;
-        }
-      } else if (currentDirection == TypeDirection.down && activeColIdx != null) {
-        if (forward && activeColIdx! < colLen - 1) {
-          activeColIdx = activeColIdx! + 1;
-        } else if (!forward && activeColIdx! > 0) {
-          activeColIdx = activeColIdx! - 1;
+    if (currentDirection == TypeDirection.neutral) return;
+
+    if (currentDirection == TypeDirection.across) {
+      int currentIndex = -1;
+      for (var entry in rowNodes.entries) {
+        if (entry.value.hasFocus) {
+          currentIndex = entry.key;
+          break;
         }
       }
-    });
-  }
-
-  bool _isCurrentCellEmpty() {
-    if (currentDirection == TypeDirection.across && activeRowIdx != null) {
-      return rowLetters[activeRowIdx!].isEmpty;
-    } else if (currentDirection == TypeDirection.down && activeColIdx != null) {
-      return colLetters[activeColIdx!].isEmpty;
+      if (currentIndex != -1) {
+        int nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
+        if (rowNodes.containsKey(nextIndex)) {
+          rowNodes[nextIndex]!.requestFocus();
+        } else {
+          rowNodes[currentIndex]!.requestFocus();
+        }
+      }
+    } else if (currentDirection == TypeDirection.down) {
+      int currentIndex = -1;
+      for (var entry in colNodes.entries) {
+        if (entry.value.hasFocus) {
+          currentIndex = entry.key;
+          break;
+        }
+      }
+      if (currentIndex != -1) {
+        int nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
+        if (colNodes.containsKey(nextIndex)) {
+          colNodes[nextIndex]!.requestFocus();
+        } else {
+          colNodes[currentIndex]!.requestFocus();
+        }
+      }
     }
-    return true;
   }
 
-  void _clearCurrentCell() {
-    setState(() {
-      if (currentDirection == TypeDirection.across && activeRowIdx != null) {
-        rowLetters[activeRowIdx!] = "";
-        if (activeRowIdx == overlapRowIndex) colLetters[overlapColIndex] = "";
-      } else if (currentDirection == TypeDirection.down && activeColIdx != null) {
-        colLetters[activeColIdx!] = "";
-        if (activeColIdx == overlapColIndex) rowLetters[overlapRowIndex] = "";
-      }
-    });
-    _validatePuzzle(); // Re-validate to clear the success state if we delete a letter
-  }
-
-  void _handleCellTap(CellType type, int index) {
+  void _handleCellTap(CellType type) {
     setState(() {
       if (type == CellType.overlapCell) {
+        // Toggle direction: if currently across, switch to down. Otherwise, switch to across.
         currentDirection = (currentDirection == TypeDirection.across) 
             ? TypeDirection.down 
             : TypeDirection.across;
-        activeRowIdx = overlapRowIndex;
-        activeColIdx = overlapColIndex;
       } else if (type == CellType.rowCell) {
         currentDirection = TypeDirection.across;
-        activeRowIdx = index;
-        activeColIdx = null;
       } else if (type == CellType.colCell) {
         currentDirection = TypeDirection.down;
-        activeColIdx = index;
-        activeRowIdx = null;
       }
     });
-    // Pop open the keyboard by focusing the hidden text field
-    hiddenNode.requestFocus();
+  }
+
+  void _onCellTextChanged(String value) {
+    if (value.isNotEmpty) {
+      // Wrap move in rendering wait before moving focus to the next cell after a character is entered
+      // WidgetsBinding.instance.addPostFrameCallback((_) {
+      // _moveFocus(forward: true);      });
+      Future.delayed(const Duration(milliseconds: 10), () => _moveFocus(forward: true)); // EVEN MORE DELAY if needed
+
+    }
   }
 
   void _validatePuzzle() {
-    String currentColWord = colLetters.join("").toLowerCase();
-    String currentRowWord = rowLetters.join("").toLowerCase();
+    String currentColWord = "";
+    for (int i = 0; i < colLen; i++) {
+      currentColWord += colControllers[i]!.text.toLowerCase();
+    }
 
-    // If any cell is empty, the join string will be too short
+    String currentRowWord = "";
+    for (int i = 0; i < rowLen; i++) {
+      currentRowWord += rowControllers[i]!.text.toLowerCase();
+    }
+
     if (currentColWord.length != colLen || currentRowWord.length != rowLen) {
       _setInvalid();
       return;
@@ -271,7 +254,6 @@ class _CrosswordState extends State<Crossword> {
 
   void _setInvalid() {
     if (isValidated) {
-      flashTimer?.cancel(); // <-- CRITICAL: Kills the background flashing
       setState(() {
         isValidated = false;
         showRedLetters = false;
@@ -281,6 +263,7 @@ class _CrosswordState extends State<Crossword> {
     }
   }
 
+  // Handle Return Button with Confirmation
   void _confirmReturn() {
     showDialog(
       context: context,
@@ -290,11 +273,12 @@ class _CrosswordState extends State<Crossword> {
           content: const Text("Do you want to return to Choices and lose your work?"),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(), 
+              onPressed: () => Navigator.of(context).pop(), // Close dialog
               child: const Text("No"),
             ),
             TextButton(
               onPressed: () {
+                // Pop the dialog, then replace current screen with fresh Home screen to reset state completely
                 Navigator.of(context).pop();
                 Navigator.pushReplacementNamed(context, '/');
               },
@@ -337,10 +321,11 @@ class _CrosswordState extends State<Crossword> {
     if (currentDirection == TypeDirection.neutral) promptText = "Mode: Neutral (Overlap Clicked)";
 
     return Scaffold(
+      // We removed the standard AppBar to create the custom Header Row
       body: SafeArea(
         child: Column(
           children: [
-            // --- FIXED: HEADER ROW ---
+            // --- HEADER ROW (Title left, Dropdown right) ---
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
               child: Row(
@@ -350,12 +335,15 @@ class _CrosswordState extends State<Crossword> {
                     "CrossWord",
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 12), // Prevents infinite expansion errors
+                  const SizedBox(width: 12), // Safe hard limit instead of Spacer()
                   Expanded(
                     child: Align(
                       alignment: Alignment.centerRight,
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 250),
+
+
+                        // The Dropdown and List restricted to ~4 lines height
                         child: Container(
                           padding: const EdgeInsets.all(8.0),
                           decoration: BoxDecoration(
@@ -370,7 +358,7 @@ class _CrosswordState extends State<Crossword> {
                               Text("pickFrom: \"Fazer\"", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900])),
                               DropdownButton<String>(
                                 value: verbDisplayMode,
-                                isExpanded: true,
+                                isExpanded: true, // Fills the container width
                                 onChanged: (String? newValue) {
                                   if (newValue != null) {
                                     setState(() { verbDisplayMode = newValue; });
@@ -388,22 +376,22 @@ class _CrosswordState extends State<Crossword> {
                                 }).toList(),
                               ),
                               const SizedBox(height: 4),
+                              // Explicitly limits height to roughly 4 lines of text
                               SizedBox(
                                 height: 90, 
                                 child: _buildVerbList(),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                        ), // Container ==============NOW EXPANDED
+                      ),),),
+                ], // Children of Row
+              ),  
             ),
             
             const Divider(),
 
+            // --- MAIN CONTENT BODY (Crossword Grid) ---
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
@@ -426,6 +414,7 @@ class _CrosswordState extends State<Crossword> {
         ),
       ),
       
+      // --- BOTTOM RIGHT RETURN BUTTON ---
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _confirmReturn,
         label: const Text("Return"),
@@ -436,6 +425,8 @@ class _CrosswordState extends State<Crossword> {
 
   Widget _buildCrosswordGrid(Color letterColor, FontWeight letterWeight) {
     double cellSize = 50.0;
+    int overlapColIndex = ovrCol - 1;
+    int overlapRowIndex = ovrRow - 1;
 
     return Center(
       child: Column(
@@ -466,59 +457,32 @@ class _CrosswordState extends State<Crossword> {
                 width: cellSize * rowLen,
                 height: cellSize * colLen,
                 child: Stack(
-                  clipBehavior: Clip.none,
                   children: [
-                    // --- THE HIDDEN TEXT FIELD ---
-                    Positioned(
-                      top: -100, left: -100, // Shoved off-screen just to be safe
-                      child: SizedBox(
-                        width: 10, height: 10,
-                        child: Opacity(
-                          opacity: 0,
-                          child: TextField(
-                            controller: hiddenController,
-                            focusNode: hiddenNode,
-                            onChanged: _onHiddenTextChanged,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            cursorColor: Colors.transparent, // Hides phantom cursors that appear when modification keys are pressed
-                            decoration: const InputDecoration(
-                              // Strips all OS focus rings
-                              border: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    
-                    // --- ROW CELLS ---
                     for (int i = 0; i < rowLen; i++)
                       Positioned(
                         left: i * cellSize,
                         top: overlapColIndex * cellSize, 
                         child: _buildCell(
-                          index: i,
-                          type: i == overlapRowIndex ? CellType.overlapCell : CellType.rowCell,
+                          controller: rowControllers[i]!, 
                           color: letterColor, 
                           weight: letterWeight, 
                           size: cellSize, 
+                          node: rowNodes[i]!, 
+                          type: i == overlapRowIndex ? CellType.overlapCell : CellType.rowCell
                         ),
                       ),
-                      
-                    // --- COLUMN CELLS ---
                     for (int i = 0; i < colLen; i++)
                       if (i != overlapColIndex)
                         Positioned(
                           left: overlapRowIndex * cellSize, 
                           top: i * cellSize,
                           child: _buildCell(
-                            index: i,
-                            type: CellType.colCell,
+                            controller: colControllers[i]!, 
                             color: letterColor, 
                             weight: letterWeight, 
                             size: cellSize, 
+                            node: colNodes[i]!, 
+                            type: CellType.colCell
                           ),
                         ),
                   ],
@@ -547,7 +511,6 @@ class _CrosswordState extends State<Crossword> {
     }
   }
 
-  // --- FIXED: VERB LIST SCROLLING ---
   Widget _buildVerbList() {
     List<VerbForm> formsToShow = _getFilteredForms();
 
@@ -563,8 +526,8 @@ class _CrosswordState extends State<Crossword> {
 
     return ListView.builder(
       itemCount: formsToShow.length,
-      shrinkWrap: false, // Allows scrolling inside the 90px height
-      physics: const AlwaysScrollableScrollPhysics(),
+      // Ensures the ListView takes up minimal required space
+      shrinkWrap: false, // Contains the list to its content size but scrolls. 'true' limit list to those that fit in the container size 
       itemBuilder: (context, index) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 2.0),
@@ -578,46 +541,46 @@ class _CrosswordState extends State<Crossword> {
     );
   }
 
-  // --- NEW VISUAL CELL (No TextField) ---
   Widget _buildCell({
-    required int index,
-    required CellType type,
+    required TextEditingController controller, 
     required Color color, 
     required FontWeight weight, 
     required double size, 
+    required FocusNode node, 
+    required CellType type
   }) {
-    String letter = "";
-    bool isActive = false;
-
-    // Read the correct letter and determine if this cell is currently selected
-    if (type == CellType.rowCell) {
-      letter = rowLetters[index];
-      isActive = (currentDirection == TypeDirection.across && activeRowIdx == index);
-    } else if (type == CellType.colCell) {
-      letter = colLetters[index];
-      isActive = (currentDirection == TypeDirection.down && activeColIdx == index);
-    } else if (type == CellType.overlapCell) {
-      letter = rowLetters[index]; // Syncs perfectly with colLetters
-
-      isActive = (currentDirection == TypeDirection.across && activeRowIdx == overlapRowIndex) || 
-                 (currentDirection == TypeDirection.down && activeColIdx == overlapColIndex);
-    }
-
-    return GestureDetector(
-      onTap: () => _handleCellTap(type, index),
-      child: Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black87),
-          // Gives the user visual feedback on which cell they are typing in
-          color: isActive ? Colors.blue.withAlpha(25) : Colors.white,
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black87),
+        color: Colors.white,
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: node,
+        // maxLength: 1,   // This is not needed since we are using inputFormatters to limit input to a single character
+        inputFormatters: [
+        TextInputFormatter.withFunction((oldValue, newValue) {
+          if (newValue.text.isEmpty) return newValue;
+          // If cell held "A" and user typed "B" (text is "AB"), grab just "B" - limits length by grabbing last
+          final String lastChar = newValue.text[newValue.text.length - 1];
+          return TextEditingValue(
+            text: lastChar,
+            selection: const TextSelection.collapsed(offset: 1),
+          );
+        }),
+      ],
+      textAlign: TextAlign.center,
+        textCapitalization: TextCapitalization.characters,
+        style: TextStyle(color: color, fontWeight: weight, fontSize: 20),
+        decoration: const InputDecoration(
+          counterText: "",
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.only(bottom: 4)
         ),
-        child: Text(
-          letter.toUpperCase(),
-          style: TextStyle(color: color, fontWeight: weight, fontSize: 20),
-        ),
+        onTap: () => _handleCellTap(type),
+        onChanged: _onCellTextChanged,
       ),
     );
   }
