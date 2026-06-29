@@ -75,12 +75,13 @@ class _CrosswordState extends State<Crossword> {
           return KeyEventResult.handled;
         }
       // 3. Handle Tab (Move forward, or backward if Shift is held)
-      else if (event.logicalKey == LogicalKeyboardKey.tab) {
-          bool isShift = HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
-                         HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight);
-          _moveFocus(forward: !isShift);
-          return KeyEventResult.handled;
-        }
+      // TAB LOGIC REMOVED - Handled by Shortcuts widget now
+      // else if (event.logicalKey == LogicalKeyboardKey.tab) {
+      //     bool isShift = HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+      //                    HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight);
+      //     _moveFocus(forward: !isShift);
+      //     return KeyEventResult.handled;
+      //   }
       return KeyEventResult.ignored;
     }; // hiddenNode.onKeyEvent
   } // initState
@@ -367,7 +368,7 @@ class _CrosswordState extends State<Crossword> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text("pickFrom: \"Fazer\"", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                              Text("Pick simple forms from: \"Fazer\"", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.blue[900])),
                               DropdownButton<String>(
                                 value: verbDisplayMode,
                                 isExpanded: true,
@@ -378,12 +379,12 @@ class _CrosswordState extends State<Crossword> {
                                 },
                                 items: <String>[
                                   "Guess!",
-                                  "Only those simple forms which fit",
+                                  "Only forms which fit",
                                   "All simple forms"
                                 ].map<DropdownMenuItem<String>>((String value) {
                                   return DropdownMenuItem<String>(
                                     value: value,
-                                    child: Text(value, style: const TextStyle(fontSize: 12)),
+                                    child: Text(value, style: const TextStyle(fontSize: 14)),
                                   );
                                 }).toList(),
                               ),
@@ -473,26 +474,49 @@ class _CrosswordState extends State<Crossword> {
                       top: -100, left: -100, // Shoved off-screen just to be safe
                       child: SizedBox(
                         width: 10, height: 10,
-                        child: Opacity(
-                          opacity: 0,
-                          child: TextField(
-                            controller: hiddenController,
-                            focusNode: hiddenNode,
-                            onChanged: _onHiddenTextChanged,
-                            autocorrect: false,
-                            enableSuggestions: false,
-                            cursorColor: Colors.transparent, // Hides phantom cursors that appear when modification keys are pressed
-                            decoration: const InputDecoration(
-                              // Strips all OS focus rings
-                              border: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                            ),
-                          ),
+                        // 1. Intercept Tab and Shift+Tab at the engine level
+                        child: Shortcuts(
+                          shortcuts: <ShortcutActivator, Intent>{
+                            const SingleActivator(LogicalKeyboardKey.tab): const NextFocusIntent(),
+                            const SingleActivator(LogicalKeyboardKey.tab, shift: true): const PreviousFocusIntent(),
+                          }, // End of Shortcuts
+                          // 2. Route those engine intents to our custom movement logic
+                          child: Actions(
+                            actions: <Type, Action<Intent>>{
+                              NextFocusIntent: CallbackAction<NextFocusIntent>(
+                                onInvoke: (NextFocusIntent intent) {
+                                  _moveFocus(forward: true);
+                                  return null; 
+                                },
+                              ),
+                              PreviousFocusIntent: CallbackAction<PreviousFocusIntent>(
+                                onInvoke: (PreviousFocusIntent intent) {
+                                  _moveFocus(forward: false);
+                                  return null;
+                                },
+                              ),
+                            }, // End of actions: etc.
+                            child: Opacity( //================
+                              opacity: 0,
+                              child: TextField(
+                                controller: hiddenController,
+                                focusNode: hiddenNode,
+                                onChanged: _onHiddenTextChanged,
+                                autocorrect: false,
+                                enableSuggestions: false,
+                                cursorColor: Colors.transparent, // Hides phantom cursors that appear when modification keys are pressed
+                                decoration: const InputDecoration(
+                                  // Strips all OS focus rings
+                                  border: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                ),
+                              ),  
+                            ), //================ 
+                          ), //child:Actions
                         ),
                       ),
                     ),
-                    
                     // --- ROW CELLS ---
                     for (int i = 0; i < rowLen; i++)
                       Positioned(
@@ -535,7 +559,7 @@ class _CrosswordState extends State<Crossword> {
     switch (verbDisplayMode) {
       case "Guess!":
         return [];
-      case "Only those simple forms which fit":
+      case "Only forms which fit":
         return fazerForms.where((form) {
           int len = form.form.length;
           return len == colLen || len == rowLen;
