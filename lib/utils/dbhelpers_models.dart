@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:async';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-// --- DATA STRUCTURES & DATABASE HELPER ---
+// --- DATA STRUCTURES ---
 class VerbForm {
   final String form;
   final String label;
@@ -12,6 +12,7 @@ class VerbForm {
 enum CellType { colCell, rowCell, overlapCell } 
 enum TypeDirection { neutral, across, down }
 
+// --- DATABASE HELPER ---
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;

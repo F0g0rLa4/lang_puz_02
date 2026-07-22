@@ -22,20 +22,22 @@ void main() async {
   String appVersion = await getAppSemanticVersion(); 
 
   String databasesPath = await getDatabasesPath();
-  String dbPath = p.join(databasesPath, 'verball.db');
+  String dbPath = p.join(databasesPath, 'verball.db');   // Just a string
 
-  bool dbExists = await databaseExists(dbPath);
+  bool dbExists = await databaseExists(dbPath);  // Negative if the database dir OR file at dir NOT exists
 
   if (!dbExists) {
-    print("Database not found. Copying from assets...");
-    try {
-      await Directory(p.dirname(dbPath)).create(recursive: true);
-    } catch (_) {}
+    AppLogger.info("Database not found. Copying from assets...");
+try {
+  await Directory(p.dirname(dbPath)).create(recursive: true);  // returns Directory object, recursive creates any missing parent directories too.
+} catch (error, stackTrace) {
+  AppLogger.error('Could not create database directory: $error', 'Stack trace: $stackTrace');
+}
 
     ByteData data = await rootBundle.load(p.join('assets', 'verball.db'));
     List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     await File(dbPath).writeAsBytes(bytes, flush: true);
-    print("Database copied successfully.");
+    AppLogger.info('Database copied successfully.');
   }
 
   Database db = await openDatabase(dbPath);
@@ -51,7 +53,7 @@ void main() async {
  
   runApp(LangPuzzles(metadataCombined: metadataCombined));
 }
-
+//==========================================================================
 class LangPuzzles extends StatelessWidget {
   final String metadataCombined;
   const LangPuzzles({super.key, required this.metadataCombined});

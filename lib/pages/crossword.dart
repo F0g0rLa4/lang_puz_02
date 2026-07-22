@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';
-import 'package:lang_puz_02/utils/dbhelper_models.dart';
+import 'package:lang_puz_02/utils/dbhelpers_models.dart';
 
 // --- PAGE 2: CROSSWORD ---
 class Crossword extends StatefulWidget {
@@ -18,11 +18,34 @@ class Crossword extends StatefulWidget {
   State<Crossword> createState() => _CrosswordState();
 }
 
+class OverlapPoint {
+  final int row;
+  final int col;
+  final int rowCharIndex; // Which index in the "row word" is the overlap
+  final int colCharIndex; // Which index in the "col word" is the overlap
+
+  OverlapPoint({
+    required this.row,
+    required this.col,
+    required this.rowCharIndex,
+    required this.colCharIndex,
+  });
+}
+
+final List<OverlapPoint> overlaps = [
+  OverlapPoint(row: 0, col: 0, rowCharIndex: 0, colCharIndex: 0),
+  OverlapPoint(row: 1, col: 1, rowCharIndex: 2, colCharIndex: 1),
+  // Add as many as you need...
+];
+
 class _CrosswordState extends State<Crossword> {
-  final int colLen = 3;
-  final int rowLen = 5;
-  final int ovrCol = 2; 
-  final int ovrRow = 5; 
+  // Original col 3 faz, row 5 fazia - on a
+  // col 7 fazemos, row 7 fizemos - on z
+  final int colLen = 8;
+  final int rowLen = 7;
+  final int ovrCol = 3; 
+  final int ovrRow = 3; 
+
 
   // Calculated overlap indices
   late final int overlapColIndex = ovrCol - 1;
@@ -205,6 +228,7 @@ class _CrosswordState extends State<Crossword> {
   void _handleCellTap(CellType type, int index) {
     setState(() {
       if (type == CellType.overlapCell) {
+        // if currentDirection neutral (at first use), it is abandoned, and otherwise we toggle between across and down
         currentDirection = (currentDirection == TypeDirection.across) 
             ? TypeDirection.down 
             : TypeDirection.across;
@@ -225,10 +249,10 @@ class _CrosswordState extends State<Crossword> {
   }
 
   void _validatePuzzle() {
-    String currentColWord = colLetters.join("").toLowerCase();
+    String currentColWord = colLetters.join("").toLowerCase(); // Join the column letters into a single string
     String currentRowWord = rowLetters.join("").toLowerCase();
 
-    // If any cell is empty, the join string will be too short
+    // If any cell is empty, the join string will be too short - stop validation early
     if (currentColWord.length != colLen || currentRowWord.length != rowLen) {
       _setInvalid();
       return;
@@ -282,7 +306,7 @@ class _CrosswordState extends State<Crossword> {
     }
   }
 
-  void _confirmReturn() {
+  void _confirmReturn() {  // Leave page and return to Choices page, but confirm first
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -308,8 +332,8 @@ class _CrosswordState extends State<Crossword> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (isLoading) {
+  Widget build(BuildContext context) { // first show progress indicator while loading, then show crossword grid plus?
+    if (isLoading) { // progress indicator while loading
       return const Scaffold(
         body: Center(
           child: Column(
@@ -337,9 +361,9 @@ class _CrosswordState extends State<Crossword> {
     if (currentDirection == TypeDirection.down) promptText = "Mode: Down (Column)";
     if (currentDirection == TypeDirection.neutral) promptText = "Mode: Neutral (Overlap Clicked)";
 
-    return Scaffold(
+    return Scaffold(  // the main UI scaffold includes the column and the floating action button
       body: SafeArea(
-        child: Column(
+        child: Column(  // Column contains a header row, a divider, and the crossword grid
           children: [
             // --- FIXED: HEADER ROW ---
             Padding(
@@ -401,24 +425,24 @@ class _CrosswordState extends State<Crossword> {
                   ),
                 ],
               ),
-            ),
+            ), // End of header row
             
             const Divider(),
 
             Expanded(
-              child: SingleChildScrollView(
+              child: SingleChildScrollView(  // Allows the crossword grid view to scroll if the space is too small for the fixed size grid
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        promptText,
+                        promptText,  // Shows the current input mode (Across, Down, Neutral)
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
                       ),
                       const SizedBox(height: 40),
                       _buildCrosswordGrid(letterColor, letterWeight),
-                    ],
+                    ], // End of column of 3 children
                   ),
                 ),
               ),
@@ -432,9 +456,10 @@ class _CrosswordState extends State<Crossword> {
         label: const Text("Return"),
         icon: const Icon(Icons.arrow_back),
       ),
-    );
-  }
+    );  // Scaffold end for column and floating action button
+  } // Widget to first show progress indicator while loading, then full screen layout
 
+  // Includes both the visible crossword grid and the hidden text field for keyboard input
   Widget _buildCrosswordGrid(Color letterColor, FontWeight letterWeight) {
     double cellSize = 50.0;
 
@@ -496,9 +521,9 @@ class _CrosswordState extends State<Crossword> {
                                 },
                               ),
                             }, // End of actions: etc.
-                            child: Opacity( //================
+                            child: Opacity( // Should be sufficient to hide the field, but other settings as backup
                               opacity: 0,
-                              child: TextField(
+                              child: TextField(  // the controller and focusNode attach to field, and onChanged callback handle the input
                                 controller: hiddenController,
                                 focusNode: hiddenNode,
                                 onChanged: _onHiddenTextChanged,
@@ -511,7 +536,7 @@ class _CrosswordState extends State<Crossword> {
                                   focusedBorder: InputBorder.none,
                                   enabledBorder: InputBorder.none,
                                 ),
-                              ),  
+                              ), // Textfield  with invisible colors 
                             ), //================ 
                           ), //child:Actions
                         ),
@@ -545,7 +570,7 @@ class _CrosswordState extends State<Crossword> {
                             size: cellSize, 
                           ),
                         ),
-                  ],
+                  ], // Children of Stack
                 ),
               ),
             ],
@@ -602,7 +627,7 @@ class _CrosswordState extends State<Crossword> {
     );
   }
 
-  // --- NEW VISUAL CELL (No TextField) ---
+  // --- NEW VISUAL CELL of the Crossword Grid (No TextField) ---
   Widget _buildCell({
     required int index,
     required CellType type,
@@ -627,7 +652,7 @@ class _CrosswordState extends State<Crossword> {
                  (currentDirection == TypeDirection.down && activeColIdx == overlapColIndex);
     }
 
-    return GestureDetector(
+    return GestureDetector(   // Self registers and watches for only taps bcs we gave it onTap only
       onTap: () => _handleCellTap(type, index),
       child: Container(
         width: size,

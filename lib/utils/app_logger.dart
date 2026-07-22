@@ -41,13 +41,13 @@ class AppLogger {
       }
 
       // Make the log file name dynamic based on the app name
-      final safeAppName = appName.toLowerCase().replaceAll(' ', '_');
-      final path = '$logDirectoryPath/${safeAppName}_debug_log.txt';
+      final cleanAppName = appName.toLowerCase().replaceAll(' ', '_');
+      final path = '$logDirectoryPath/${cleanAppName}_debug_log.txt';
       _logFile = File(path);
 
       String currentCommit = await _getCommitHash();
 
-      print("📝 [AppLogger] Writing physical logs to: $path");
+      print("📝 [AppLogger] Writing physical logs to: $path");  // Should be correct dir for any platform
       
       // Injecting the metadata_combined into the initialization sequence
       info("========================================");

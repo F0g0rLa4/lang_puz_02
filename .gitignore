@@ -34,6 +34,7 @@ misc_docs/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
+.archive/
 /build/
 /coverage/
 
