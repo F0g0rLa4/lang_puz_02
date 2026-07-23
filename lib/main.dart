@@ -4,6 +4,7 @@ import 'package:flutter/services.dart'; // for Keyboard Events & rootBundle
 import 'dart:io';     // for File
 import 'package:path/path.dart' as p;  
 import 'package:sqflite_common_ffi/sqflite_ffi.dart'; // Desktop SQLite FFI
+import 'package:lang_puz_02/utils/dbhelpers_models.dart';  // for DatabaseHelper and VerbForm
 import 'package:lang_puz_02/utils/aa_logger_meta.dart';  // barrel for AppLogger and metadata
 import 'package:lang_puz_02/pages/puzzle_choices_page.dart';
 import 'package:lang_puz_02/pages/crossword.dart';
@@ -21,24 +22,7 @@ void main() async {
   String appName = await getAppName(); 
   String appVersion = await getAppSemanticVersion(); 
 
-  String databasesPath = await getDatabasesPath();
-  String dbPath = p.join(databasesPath, 'verball.db');   // Just a string
-
-  bool dbExists = await databaseExists(dbPath);  // Negative if the database dir OR file at dir NOT exists
-
-  if (!dbExists) {
-    AppLogger.info("Database not found. Copying from assets...");
-try {
-  await Directory(p.dirname(dbPath)).create(recursive: true);  // returns Directory object, recursive creates any missing parent directories too.
-} catch (error, stackTrace) {
-  AppLogger.error('Could not create database directory: $error', 'Stack trace: $stackTrace');
-}
-
-    ByteData data = await rootBundle.load(p.join('assets', 'verball.db'));
-    List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-    await File(dbPath).writeAsBytes(bytes, flush: true);
-    AppLogger.info('Database copied successfully.');
-  }
+  await DatabaseHelper.instance.initialize();
 
   Database db = await openDatabase(dbPath);
   String dbVersion = await getBundledDbVersion(db);

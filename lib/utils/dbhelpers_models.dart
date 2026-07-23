@@ -1,53 +1,164 @@
 import 'dart:io';
-import 'dart:async';
+
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'package:lang_puz_02/utils/app_logger.dart';
 
 // --- DATA STRUCTURES ---
 class VerbForm {
   final String form;
   final String label;
+
   const VerbForm(this.form, this.label);
 }
 
-enum CellType { colCell, rowCell, overlapCell } 
+enum CellType { colCell, rowCell, overlapCell }
+
 enum TypeDirection { neutral, across, down }
 
 // --- DATABASE HELPER ---
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
-  static Database? _database;
-  
-  DatabaseHelper._init(); 
+  static final DatabaseHelper instance = DatabaseHelper._internal();
 
-  Future<Database> get database async {
-      if (_database != null) return _database!;
+  DatabaseHelper._internal();
 
-      String path = await getDatabasesPath();
-      String fullPath = '$path/verball.db';
+  static const String _dbName = 'verball.db';
+  static const int _dbVersion = 1;
 
-      if (!await File(fullPath).exists()) {
-        throw FileSystemException(
-          "CRITICAL: Database file 'verball.db' not found at $fullPath. "
-          "Please check your installation path and configuration settings."
-        );
+  Database? _database;
+  String? _dbPath;
+
+  Future<void> initialize() async {
+    if (_database != null) {
+      return;
+    }
+
+    try {
+      AppLogger.info('Initializing database...');
+
+      final databasesPath = await getDatabasesPath();
+      final dbPath = p.join(databasesPath, _dbName);
+      _dbPath = dbPath;
+
+      final dbExists = await databaseExists(dbPath);
+
+      if (!dbExists) {
+        AppLogger.info('Database not found. Copying from assets...');
+        await _copyDatabaseFromAsset(dbPath);
+      } else {
+        AppLogger.info('Database already exists at $dbPath');
       }
 
-      _database = await openDatabase(fullPath);
-      return _database!;
+      _database = await openDatabase(
+        dbPath,
+        version: _dbVersion,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
+        onOpen: (db) async {
+          final version = await db.getVersion();
+
+          AppLogger.info('Database opened successfully.');
+          AppLogger.info('Database path: $dbPath');
+          AppLogger.info('Database version: $version');
+        },
+        onUpgrade: _onUpgrade,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error('Database initialization failed', error, stackTrace);
+      rethrow;
+    }
   }
 
-  Future<T> _executeSafeQuery<T>(Future<T> Function(Database db) action) async {
-    final db = await instance.database;
-    return await action(db);
+  Future<Database> get database async {
+    if (_database != null) {
+      return _database!;
+    }
+
+    await initialize();
+
+    if (_database == null) {
+      throw StateError('Database initialization completed but _database is null.');
+    }
+
+    return _database!;
+  }
+
+  String? get databasePath => _dbPath;
+
+  Future<void> _copyDatabaseFromAsset(String dbPath) async {
+    try {
+      await Directory(p.dirname(dbPath)).create(recursive: true);
+
+      final data = await rootBundle.load(p.join('assets', _dbName));
+
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+
+      await File(dbPath).writeAsBytes(bytes, flush: true);
+
+      AppLogger.info('Database copied successfully to $dbPath');
+    } catch (error, stackTrace) {
+      AppLogger.error('Could not copy database from assets', error, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> _onUpgrade(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    AppLogger.info('Upgrading database from $oldVersion to $newVersion');
+
+    if (oldVersion < 2) {
+      // await db.execute('ALTER TABLE ...');
+    }
+
+    if (oldVersion < 3) {
+      // await db.execute('CREATE INDEX ...');
+    }
+  }
+
+  Future<void> closeDatabase() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+      AppLogger.info('Database closed.');
+    }
+  }
+
+  Future<T> _executeSafeQuery<T>(
+    Future<T> Function(Database db) action,
+  ) async {
+    try {
+      final db = await database;
+      return await action(db);
+    } catch (error, stackTrace) {
+      AppLogger.error('Database query failed', error, stackTrace);
+      rethrow;
+    }
   }
 
   Future<List<VerbForm>> getAllFazerForms() async {
-    return await _executeSafeQuery((db) async {
-      final List<Map<String, dynamic>> maps = await db.query('verb_forms', where: 'verb_id = ?', whereArgs: [1]);
-      return List.generate(maps.length, (i) => VerbForm(
-        maps[i]['form_text'] as String,
-        maps[i]['label_short'] as String,
-      ));
+    return _executeSafeQuery((db) async {
+      final maps = await db.query(
+        'verb_forms',
+        where: 'verb_id = ?',
+        whereArgs: [1],
+      );
+
+      return List.generate(
+        maps.length,
+        (i) => VerbForm(
+          maps[i]['form_text'] as String,
+          maps[i]['label_short'] as String,
+        ),
+      );
     });
   }
 }

@@ -28,7 +28,7 @@ void main() {
 
   testWidgets('Crossword navigation and input sequence test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const CrosswordApp());
+    await tester.pumpWidget(const LangPuzzles(metadataCombined: 'Integration Test'));
     await tester.pumpAndSettle();
     // ----------------------------------------------------------------------
     // PART 1: Dropdown Sequence
