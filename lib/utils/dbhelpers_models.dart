@@ -30,9 +30,9 @@ class DatabaseHelper {
   Database? _database;
   String? _dbPath;
 
-  Future<void> initialize() async {
+  Future<Database> initialize() async {
     if (_database != null) {
-      return;
+      return _database!;
     }
 
     try {
@@ -42,9 +42,9 @@ class DatabaseHelper {
       final dbPath = p.join(databasesPath, _dbName);
       _dbPath = dbPath;
 
-      final dbExists = await databaseExists(dbPath);
+      // final dbExists = await databaseExists(dbPath);
 
-      if (!dbExists) {
+      if (!await databaseExists(dbPath)) {
         AppLogger.info('Database not found. Copying from assets...');
         await _copyDatabaseFromAsset(dbPath);
       } else {
@@ -57,33 +57,19 @@ class DatabaseHelper {
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
-        onOpen: (db) async {
-          final version = await db.getVersion();
-
-          AppLogger.info('Database opened successfully.');
-          AppLogger.info('Database path: $dbPath');
-          AppLogger.info('Database version: $version');
-        },
         onUpgrade: _onUpgrade,
       );
+      return _database!;
+
     } catch (error, stackTrace) {
-      AppLogger.error('Database initialization failed', error, stackTrace);
+      AppLogger.error(
+        'Database initialization failed', error, stackTrace);
       rethrow;
     }
   }
 
   Future<Database> get database async {
-    if (_database != null) {
-      return _database!;
-    }
-
-    await initialize();
-
-    if (_database == null) {
-      throw StateError('Database initialization completed but _database is null.');
-    }
-
-    return _database!;
+    return _database ?? await initialize();   // initialize if not already done
   }
 
   String? get databasePath => _dbPath;

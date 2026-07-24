@@ -10,32 +10,52 @@ import 'package:lang_puz_02/pages/puzzle_choices_page.dart';
 import 'package:lang_puz_02/pages/crossword.dart';
 
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  _configureDatabaseForPlatform();
+
+  try {
+  
+    // Prepare metadata for logging and to pass to the UI
+    final osInfo = getDetailedOS();
+    final appName = await getAppName();
+    final appVersion = await getAppSemanticVersion();
+    final dbDummy = "initializing database...";  // Placeholder until we get the actual version
+    String metadataCombined =
+        'OS: $osInfo | '
+        'App Version: $appVersion | '
+        'Bundled DB Version: $dbDummy';
+    await AppLogger.init(
+      appName:  appName,
+      metadataCombined: metadataCombined,     );
+    AppLogger.info('AppLogger initializing for db initialization');
+
+    final Database db = await DatabaseHelper.instance.initialize();
+    final dbVersion = await getBundledDbVersion(db);
+   
+    metadataCombined =
+      'OS: $osInfo | '
+      'App Version: $appVersion | '
+      'Bundled DB Version: $dbVersion';
+    await AppLogger.init(
+      appName:  appName,
+      metadataCombined: metadataCombined);
+     AppLogger.info('Starting the app with metadata: $metadataCombined');
+
+    runApp(LangPuzzles(metadataCombined: metadataCombined));
+  } catch (error, stackTrace) {
+    stderr.writeln('Application initialization failed: $error');
+    stderr.writeln(stackTrace);
+    rethrow;
+  }
+}
+
+void _configureDatabaseForPlatform() {
   if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
     sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi; 
+    databaseFactory = databaseFactoryFfi;
   }
-
-  String osInfo = getDetailedOS();
-  String appName = await getAppName(); 
-  String appVersion = await getAppSemanticVersion(); 
-
-  await DatabaseHelper.instance.initialize();
-
-  Database db = await openDatabase(dbPath);
-  String dbVersion = await getBundledDbVersion(db);
-
-  String metadataCombined = 'OS: $osInfo | App Version: $appVersion | Bundled DB Version: $dbVersion';
-
-  await AppLogger.init(
-    appName: appName,
-    metadataCombined: metadataCombined,
-  );
-  AppLogger.info('App initialization complete. Booting UI.');
- 
-  runApp(LangPuzzles(metadataCombined: metadataCombined));
 }
 //==========================================================================
 class LangPuzzles extends StatelessWidget {
