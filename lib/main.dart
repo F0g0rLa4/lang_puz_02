@@ -29,17 +29,16 @@ Future<void> main() async {
     await AppLogger.init(
       appName:  appName,
       metadataCombined: metadataCombined,     );
-    AppLogger.info('AppLogger initializing for db initialization');
+    AppLogger.info('AppLogger initializing. Preparing for db initialization');
 
     final Database db = await DatabaseHelper.instance.initialize();
+    // Get the actual bundled database version after db initialization & add it to metadataCombined
     final dbVersion = await getBundledDbVersion(db);
-   
     metadataCombined =
       'OS: $osInfo | '
       'App Version: $appVersion | '
       'Bundled DB Version: $dbVersion';
-    await AppLogger.init(
-      appName:  appName,
+    await AppLogger.metaDbUpdate(
       metadataCombined: metadataCombined);
      AppLogger.info('Starting the app with metadata: $metadataCombined');
 

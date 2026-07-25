@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
+import 'dart:async'; // to cue
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -47,7 +48,7 @@ class AppLogger {
 
       String currentCommit = await _getCommitHash();
 
-      print("📝 [AppLogger] Writing physical logs to: $path");  // Should be correct dir for any platform
+      _writeToFile('[INFO]'," Writing physical logs to: $path");  // Should be correct dir for any platform
       
       // Injecting the metadata_combined into the initialization sequence
       info("========================================");
@@ -57,9 +58,15 @@ class AppLogger {
       info("========================================");
       
     } catch (e) {
-      print("Failed to initialize log file: $e");
+      _writeToFile('[ERROR]', "Failed to initialize log file: $e");  // REALLY?
     }
   }
+  static Future<void> metaDbUpdate({
+    required String metadataCombined,    
+  }) async {
+    _sessionMetadata = metadataCombined;
+  }
+
 
   // 2. The Smart Hash Finder
   static Future<String> _getCommitHash() async {
