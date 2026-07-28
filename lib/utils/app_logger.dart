@@ -27,46 +27,71 @@ class AppLogger {
     try {
       String logDirectoryPath;
 
-      // If we are developing (Debug Mode) on a Desktop OS:
-      if (kDebugMode && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
-        logDirectoryPath = '${Directory.current.path}/logs';
-        
+      if (
+        kDebugMode &&
+        (Platform.isWindows ||
+            Platform.isMacOS ||
+            Platform.isLinux)
+      ) {
+        logDirectoryPath =
+            '${Directory.current.path}/logs';
+
         final logDir = Directory(logDirectoryPath);
-        if (!logDir.existsSync()) {
-          logDir.createSync(recursive: true);
+
+        if (!await logDir.exists()) {
+          await logDir.create(recursive: true);
         }
       } else {
-        // Fallback for Mobile or Production Release Builds
-        final directory = await getApplicationDocumentsDirectory();
+        final directory =
+            await getApplicationDocumentsDirectory();
+
         logDirectoryPath = directory.path;
       }
 
-      // Make the log file name dynamic based on the app name
-      final cleanAppName = appName.toLowerCase().replaceAll(' ', '_');
-      final path = '$logDirectoryPath/${cleanAppName}_debug_log.txt';
+      final cleanAppName =
+          appName.toLowerCase().replaceAll(' ', '_');
+
+      final path =
+          '$logDirectoryPath/${cleanAppName}_debug_log.txt';
+
       _logFile = File(path);
 
-      String currentCommit = await _getCommitHash();
+      final currentCommit = await _getCommitHash();
 
-      _writeToFile('[INFO]'," Writing physical logs to: $path");  // Should be correct dir for any platform
+      await _writeToFile('[INFO]', 'Writing physical logs to: $path');
+      await _writeToFile('[INFO]', '========================================');
+      await _writeToFile('[INFO]', '=== $_appName Started ===');
+      await _writeToFile('[INFO]', '=== Build Commit: $currentCommit ===' );
+      await _writeToFile('[INFO]', '=== Session Metadata: $_sessionMetadata ===');
+      await _writeToFile('[INFO]', '========================================');
       
-      // Injecting the metadata_combined into the initialization sequence
-      info("========================================");
-      info("=== $_appName Started ===");
-      info("=== Build Commit: $currentCommit ===");
-      info("=== Session Metadata: $_sessionMetadata ===");
-      info("========================================");
-      
-    } catch (e) {
-      _writeToFile('[ERROR]', "Failed to initialize log file: $e");  // REALLY?
+    } catch (error, stackTrace) {
+      developer.log(
+        'Failed to initialize log file',
+        name: 'AppLogger.Error',
+        error: error,
+        stackTrace: stackTrace,
+        level: 1000,
+      );
+
+      stderr.writeln(
+        'Failed to initialize log file: $error',
+      );
+      stderr.writeln(stackTrace);
+
+      rethrow;
     }
-  }
+}
+
   static Future<void> metaDbUpdate({
     required String metadataCombined,    
-  }) async {
-    _sessionMetadata = metadataCombined;
-  }
+  })  async {
+  _sessionMetadata = metadataCombined;
 
+  await _writeToFile(
+    '[INFO]', 'Session metadata updated: $_sessionMetadata',
+  );
+  }
 
   // 2. The Smart Hash Finder
   static Future<String> _getCommitHash() async {
@@ -95,44 +120,73 @@ class AppLogger {
     return "Local-Uncommitted";
   }
 
-  // 3. The internal file writer with timestamps
-  static void _writeToFile(String prefix, String message, [Object? error, StackTrace? stackTrace]) async {
-    if (_logFile == null) return;
+  // 3. The internal file writer with timestamps. Using a queue to ensure that writes are sequential and not overlapping
+  static Future<void> _writeQueue = Future<void>.value();  // A completed future to start the queue. Each write will chain onto this future to ensure sequential writes.  
 
+  static Future<void> _writeToFile(String prefix, String message, [Object? error, StackTrace? stackTrace])  {
+      
+    final logFile = _logFile;  // Copy pointer to local variable to avoid race conditions
+    if (logFile == null) {
+      return Future<void>.value();
+    }
     // Generate a clean timestamp: "2026-06-20 17:10:09.123"
     final timestamp = DateTime.now().toString();
     
-    final buffer = StringBuffer();
-    buffer.writeln('[$timestamp] $prefix $message');
-    
+    final buffer = StringBuffer()
+      ..writeln('[$timestamp] $prefix $message');
     if (error != null) buffer.writeln('Exception: $error');
     if (stackTrace != null) buffer.writeln('Stack: $stackTrace');
+    final entry = buffer.toString();
 
+  _writeQueue = _writeQueue.then((_) async {
     try {
-      // Append the new text to the bottom of the file
-      await _logFile!.writeAsString(buffer.toString(), mode: FileMode.append);
-    } catch (e) {
-      developer.log('Failed to write to log file', error: e);
+      await logFile.writeAsString(
+        entry,
+        mode: FileMode.append,
+        flush: true,
+      );
+    } catch (error, stackTrace) {   // If one write fails, we log to developer console and stderr, but we don't rethrow to allow next writes to continue
+      developer.log(
+        'Failed to write to log file',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
-  }
+  });
+
+  return _writeQueue;
+}
 
   // 4. Your Info log
   static void info(String message) {
-    if (kDebugMode) {
-      // Made dynamic instead of hardcoding 'Verball.Info'
-      developer.log(message, name: '$_appName.Info');
-      _writeToFile('[INFO]', message);
-    }
+  if (kDebugMode) {
+    developer.log(                    // Developer log for debug console only
+      message,
+      name: '$_appName.Info',
+    );
   }
+
+  unawaited(
+    _writeToFile('[INFO]', message),  // Physical file log in Debug & Release mode write to log, but don't block the main thread
+  );
+}
 
   // 5. Your Error log
   static void error(String message, [Object? error, StackTrace? stackTrace]) {
-    if (kDebugMode) {
+    
       // Automatically append the session metadata to every error for easier debugging
       final contextMessage = '$message | Meta: $_sessionMetadata';
-      
+    if (kDebugMode) {
       developer.log(contextMessage, name: '$_appName.Error', error: error, stackTrace: stackTrace, level: 1000);
-      _writeToFile('[ERROR]', contextMessage, error, stackTrace);
     }
+
+    unawaited(
+      _writeToFile( '[ERROR]', contextMessage, error, stackTrace)
+    );
+
   }
+
+  static Future<void> flush() async {
+  await _writeQueue;
+}
 }

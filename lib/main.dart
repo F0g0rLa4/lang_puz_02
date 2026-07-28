@@ -41,6 +41,7 @@ Future<void> main() async {
     await AppLogger.metaDbUpdate(
       metadataCombined: metadataCombined);
      AppLogger.info('Starting the app with metadata: $metadataCombined');
+    await AppLogger.flush(); // Ensure all startup entries have reached the log file.
 
     runApp(LangPuzzles(metadataCombined: metadataCombined));
   } catch (error, stackTrace) {
